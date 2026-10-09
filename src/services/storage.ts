@@ -1,3 +1,4 @@
+import {decodeInterfaceFile} from '../model/interfaceViews'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { FieldSchema, Workspace } from '../model/types'
 import { exportFiles, parseDocumentMarkdown } from '../model/markdown'
@@ -18,7 +19,7 @@ export function replaceDocumentFromImport(worldId: string, docId: string) {
 
 export class MarkdownConflictError extends Error {
   constructor(public submitted: Workspace, public local: Workspace, public remote: Workspace, public files: string[]) {
-    super(`Markdown 与界面同时修改了相同内容：${files.join('、')}`)
+    super(`文件与界面同时修改了相同内容：${files.join('、')}`)
   }
 }
 export function clearMarkdownConflict() {
@@ -33,7 +34,7 @@ function serialize<T>(action: () => Promise<T>): Promise<T> {
 }
 async function readFiles(workspace: Workspace, withSchema = false): Promise<Snapshot> {
   if (!isTauri()) return {}
-  return invoke<Snapshot>('read_document_files', { requests: Object.fromEntries(workspace.worlds.map(world => [world.id, world.documents.flatMap(doc => withSchema ? [doc.fileName, doc.fileName.replace(/\.md$/i, '.schema.json')] : [doc.fileName])])) })
+  return invoke<Snapshot>('read_document_files', { requests: Object.fromEntries(workspace.worlds.map(world => [world.id, [...world.documents.flatMap(doc => withSchema ? [doc.fileName, doc.fileName.replace(/\.md$/i, '.schema.json')] : [doc.fileName]),...Object.values(world.views||{}).map(view=>view.fileName)]])) })
 }
 function isSchema(value: unknown): value is FieldSchema[] {
   return Array.isArray(value) && value.every(field => field && typeof field.id === 'string' && typeof field.key === 'string'
@@ -43,7 +44,14 @@ function isSchema(value: unknown): value is FieldSchema[] {
 function decodeDocuments(workspace: Workspace, snapshots: Snapshot, withSchema = false, tolerateErrors = false): Workspace {
   return { ...(diskWorkspace || workspace), worlds: workspace.worlds.map(world => {
     const oldWorld = diskWorkspace?.worlds.find(item => item.id === world.id)
-    return { ...(oldWorld || world), documents: world.documents.map(doc => {
+    const views=Object.fromEntries(Object.values(world.views||{}).map(view=>{
+      const previous=oldWorld?.views?.[view.id]||view,text=snapshots[world.id]?.[view.fileName]
+      if(text==null){if(diskFiles[world.id]?.[view.fileName]!=null)throw new Error(`${world.name} / ${view.fileName}：界面配置被删除，未覆盖磁盘`);return [view.id,previous]}
+      if(!withSchema&&text===diskFiles[world.id]?.[view.fileName])return [view.id,previous]
+      try{return [view.id,decodeInterfaceFile(text,previous,world)]}catch(error){throw new Error(`${world.name} / ${view.fileName}：${String(error)}。未覆盖磁盘文件。`)}
+    }))
+    const nodes=(oldWorld||world).nodes.map(n=>views[n.id]?{...n,name:views[n.id].name,classId:views[n.id].parentClassId}:n)
+    return { ...(oldWorld || world), views,nodes, documents: world.documents.map(doc => {
       let previous = oldWorld?.documents.find(item => item.id === doc.id) || doc
       // The import dialog explicitly authorizes replacing this document. It also
       // lets a valid import repair an unreadable current Markdown file.
@@ -93,7 +101,7 @@ function changedFileNames(base: Workspace, local: Workspace, remote: Workspace):
     const b = base.worlds.find(w => w.id === world.id)?.documents.find(d => d.id === doc.id)
     const r = remote.worlds.find(w => w.id === world.id)?.documents.find(d => d.id === doc.id)
     return b && r && mergeThreeWay(b, doc, r).conflicts.length > 0
-  }).map(doc => `${world.name} / ${doc.fileName}`))
+  }).map(doc => `${world.name} / ${doc.fileName}`).concat(Object.values(world.views||{}).filter(view=>{const b=base.worlds.find(w=>w.id===world.id)?.views?.[view.id],r=remote.worlds.find(w=>w.id===world.id)?.views?.[view.id];return b&&r&&mergeThreeWay(b,view,r).conflicts.length>0}).map(view=>`${world.name} / ${view.fileName}`)))
 }
 
 /** Re-read before saving and use a content comparison in Rust to detect races. */
@@ -138,7 +146,7 @@ function synchronize(workspace: Workspace, write: boolean): Promise<Workspace> {
       try {
         await invoke('save_workspace', { workspace: local, files: output, expected: files })
         diskWorkspace = local
-        diskFiles = Object.fromEntries(local.worlds.map(world => [world.id, Object.fromEntries(world.documents.map(doc => [doc.fileName, output[world.id][doc.fileName]]))]))
+        diskFiles = Object.fromEntries(local.worlds.map(world => [world.id, Object.fromEntries(world.documents.map(doc => [doc.fileName, output[world.id][doc.fileName]]).concat(Object.values(world.views||{}).map(view=>[view.fileName,output[world.id][view.fileName]])))]))
         for (const world of local.worlds) for (const doc of world.documents) replacements.delete(`${world.id}/${doc.id}`)
         return local
       } catch (error) {

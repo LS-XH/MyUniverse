@@ -1,3 +1,4 @@
+import {normalizeViews} from './interfaceViews'
 import type { CSSProperties } from 'react'
 import { Theme, ThemeColors, Workspace, World } from './types'
 
@@ -19,7 +20,7 @@ export const themeFields: {key:keyof ThemeColors;label:string}[] = [
   {key:'chatMessage',label:'聊天消息'}, {key:'composer',label:'聊天输入框'}, {key:'mapPin',label:'地图标记'}, {key:'markdownHighlight',label:'Markdown 当前行高亮'}
 ]
 export function normalizeWorkspace(workspace: Workspace): Workspace {
-  return {...workspace,pluginFolders:workspace.pluginFolders||[],functions:workspace.functions||[],models:(workspace.models||[]).map(model=>({...model,enabled:model.enabled!==false})),themeId:workspace.themeId||'violet',themes:(workspace.themes||[]).map(theme=>({...theme,colors:{...violet,...theme.colors}})),worlds:workspace.worlds.map(normalizeWorld)}
+  return {...workspace,tools:workspace.tools||[],sdWorkflows:workspace.sdWorkflows||[],agents:workspace.agents||[],pluginFolders:workspace.pluginFolders||[],functions:workspace.functions||[],models:(workspace.models||[]).map(model=>({...model,enabled:model.enabled!==false})),themeId:workspace.themeId||'violet',themes:(workspace.themes||[]).map(theme=>({...theme,colors:{...violet,...theme.colors}})),worlds:workspace.worlds.map(normalizeWorld)}
 }
 function normalizeWorld(world: World): World {
   const relationDoc=world.documents.find(doc=>doc.id==='relations')
@@ -36,7 +37,7 @@ function normalizeWorld(world: World): World {
       })}))
     }:field)}))
   }:doc)
-  return {...world,documents:docs,chat:Object.assign({agent:'',files:[],skills:[],conversations:[],activeConversationId:null},world.chat)}
+  return normalizeViews({...world,documents:docs,chat:Object.assign({agent:'',files:[],skills:[],conversations:[],activeConversationId:null},world.chat)})
 }
 export function activeTheme(workspace:Workspace): Theme {
   return [...builtinThemes,...(workspace.themes||[])].find(theme=>theme.id===workspace.themeId)||builtinThemes[0]

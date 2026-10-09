@@ -1,3 +1,4 @@
+import {normalizeViews} from './interfaceViews'
 import { ClassDocument, FieldSchema, World, uid } from './types'
 const f = (key: string, valueType: FieldSchema['valueType'], children?: FieldSchema[], extra: Partial<FieldSchema> = {}): FieldSchema => ({ id: uid(), keyType: 'Const', key, valueType, children, ...extra })
 const list = (key: string, valueType: FieldSchema['valueType'], children?: FieldSchema[], extra: Partial<FieldSchema> = {}) => f(key, valueType, children, { repeatable: true, keyType: 'Text', placeholder: key, ...extra })
@@ -22,5 +23,5 @@ export function createWorld(name: string): World {
   file('人物列表',peopleView,people);add('关系网','view',peopleView,{viewType:'graph'});file('关系类型',peopleView,relations)
   file('事件列表',eventView,events)
   add('地图视图','view',worldView,{viewType:'map'});add('聊天框','view',null,{viewType:'chat'})
-  return {id:uid(),name,nodes,documents:docs,graph:{positions:{},lineStyles:{},domainStyles:{},showDomains:true},map:{image:'',legend:''},chat:{agent:'',files:[],skills:[],conversations:[],activeConversationId:null}}
+  return normalizeViews({id:uid(),name,nodes,documents:docs,graph:{positions:{},lineStyles:{},domainStyles:{},showDomains:true},map:{image:'',legend:''},chat:{agent:'',files:[],skills:[],conversations:[],activeConversationId:null}})
 }

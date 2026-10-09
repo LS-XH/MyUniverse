@@ -9,6 +9,8 @@
 | [界面与交互](ui-interactions.md) | 实际按钮、手势、菜单、动画和页面操作规则 |
 | [结构说明](architecture.md) | 模块职责、数据保存、界面复用、运行与交付边界 |
 | [Markdown 双向编辑](markdown-sync.md) | 序列化、导入、源码编辑、行定位、磁盘刷新和冲突处理 |
+| [模型与智能体](models-and-agents.md) | LLM 配置与发现、ComfyUI 工作流、Agent 显式上下文、工具和调用边界 |
+| [界面操作类型](interface-views.md) | 父文件类型、对象投影、元素绑定、独立布局与平铺文件组织 |
 | [Function](functions.md) | JS/Python/Flow、self/input 类型接口、对象助手、返回值和运行异常 |
 
 现行规则以最后确认的需求及上述文档为准。Planning 的原始副本用于历史参考。文档中需区分设计目标、已实现能力、构建验证与实际界面验收，不能将后续目标写成已经交付。
@@ -22,3 +24,5 @@
 - Markdown 使用独立双栏及连续顶部标题，按钮固定右上角。
 - Function 返回类型、只读呈现和原始 Value 的职责分别说明。
 - 修正早期浮动预览、无展开箭头与强制铺满等已被替代的描述。
+
+- [工作流严格类型、Messages/Image 与批量编辑](workflow-types.md)：变量结构、类型成员、执行依赖、兼容迁移及工具上下文。

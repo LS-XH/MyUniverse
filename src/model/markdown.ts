@@ -56,6 +56,8 @@ export function exportFiles(world: World): Record<string,string> {
     catch(error){throw new Error(`${world.name} / ${doc.fileName}：${error instanceof Error?error.message:String(error)}。尚未写入文件。`)}
     files[doc.fileName]=text;files[doc.fileName.replace(/\.md$/i,'.schema.json')]=JSON.stringify(doc.schema,null,2)
   }
+  for(const view of Object.values(world.views||{})){if(!/^[^\\/:]+\.view\.json$/.test(view.fileName)||files[view.fileName])throw new Error('界面配置文件名必须唯一且位于当前 world 目录');files[view.fileName]=JSON.stringify(view,null,2)}
+  files['world-index.json']=JSON.stringify({version:1,id:world.id,name:world.name,nodes:world.nodes,documents:world.documents.map(({id,name,fileName,protected:protectedFile})=>({id,name,fileName,protected:protectedFile})),views:Object.values(world.views||{}).map(({id,fileName,kind,parentClassId})=>({id,fileName,kind,parentClassId}))},null,2)
   files['关系网.json']=JSON.stringify(world.graph,null,2)
   files['地图配置.json']=JSON.stringify(world.map,null,2)
   files['聊天框配置.json']=JSON.stringify(world.chat,null,2)

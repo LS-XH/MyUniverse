@@ -1,0 +1,4 @@
+import { Copy, ClipboardPaste, Scissors, Undo2, Redo2 } from 'lucide-react'
+export default function GraphEditActions({copy,paste,cut,undo,redo,canUndo,canRedo,hasSelection}:{copy:()=>void;paste:()=>void;cut:()=>void;undo:()=>void;redo:()=>void;canUndo:boolean;canRedo:boolean;hasSelection:boolean}) {
+  return <><button className="icon-button" title="复制 (Ctrl+C)" aria-label="复制节点" disabled={!hasSelection} onClick={copy}><Copy size={17}/></button><button className="icon-button" title="粘贴 (Ctrl+V)" aria-label="粘贴节点" onClick={paste}><ClipboardPaste size={17}/></button><button className="icon-button" title="剪切 (Ctrl+X)" aria-label="剪切节点" disabled={!hasSelection} onClick={cut}><Scissors size={17}/></button><button className="icon-button" title="撤销 (Ctrl+Z)" aria-label="撤销" disabled={!canUndo} onClick={undo}><Undo2 size={17}/></button><button className="icon-button" title="重做 (Ctrl+Y)" aria-label="重做" disabled={!canRedo} onClick={redo}><Redo2 size={17}/></button></>
+}

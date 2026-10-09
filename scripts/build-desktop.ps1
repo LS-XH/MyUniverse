@@ -12,7 +12,12 @@ try {
     $taskReleaseExe = Join-Path $taskReleaseDirectory 'my-universe.exe'
     New-Item -ItemType Directory -Path $taskReleaseDirectory -Force | Out-Null
     try { Copy-Item -LiteralPath $taskBuiltExe -Destination $taskReleaseExe -Force }
-    catch { throw "Cannot replace $taskReleaseExe. Close MyUniverse and rerun this script. The compiled file is retained at $taskBuiltExe. $($_.Exception.Message)" }
+    catch {
+        $taskInstaller = Join-Path $PSScriptRoot 'install-desktop.ps1'
+        Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-File',('"' + $taskInstaller + '"')) -WindowStyle Hidden
+        Write-Output "Built: $taskBuiltExe. Automatic replacement queued until the current application releases the file."
+        return
+    }
     $taskShortcutShell = New-Object -ComObject WScript.Shell
     $taskShortcut = $taskShortcutShell.CreateShortcut((Join-Path $taskProjectRoot 'my-universe.exe - 快捷方式.lnk'))
     $taskShortcut.TargetPath = $taskReleaseExe

@@ -101,7 +101,7 @@ function mockDisk(workspace: Workspace, override?: string) {
     if (command === 'read_document_files') return Object.fromEntries(Object.entries(args.requests as Record<string, string[]>).map(([id, names]) => [id, Object.fromEntries(names.map(name => [name, files[id]?.[name] ?? null]))]))
     if (command === 'save_workspace') {
       if (race) { const action = race; race = undefined; action() }
-      for (const [id, output] of Object.entries(args.files as Record<string, Record<string, string>>)) for (const name of Object.keys(output).filter(name => name.endsWith('.md'))) assert.equal(args.expected[id][name], files[id]?.[name] ?? null, 'MARKDOWN_CHANGED')
+      for (const [id, output] of Object.entries(args.files as Record<string, Record<string, string>>)) for (const name of Object.keys(output).filter(name => name.endsWith('.md')||name.endsWith('.view.json'))) assert.equal(args.expected[id][name], files[id]?.[name] ?? null, 'MARKDOWN_CHANGED')
       for (const [id, output] of Object.entries(args.files as Record<string, Record<string, string>>)) files[id] = { ...files[id], ...output }
       saves++
       return
@@ -192,4 +192,20 @@ test('model settings and chat selection survive simultaneous external Markdown u
   assert.deepEqual(saved.pluginFolders,local.pluginFolders)
   assert.equal(saved.worlds[0].chat.modelId,'connection')
   assert.equal(value(person(saved),'人物性格'),'外部修改')
+})
+
+
+test('view JSON reloads, merges independent edits and rejects conflicting or malformed configuration',async()=>{
+ const {workspace,world}=fixture(),disk=mockDisk(workspace)
+ const loaded=await loadWorkspace();await saveWorkspace(loaded)
+ const id=world.nodes.find(n=>n.viewType==='graph')!.id,file=loaded.worlds[0].views![id].fileName
+ const remote=structuredClone(loaded.worlds[0].views![id]);remote.name='外部图';disk.files[world.id][file]=JSON.stringify(remote)
+ const local=structuredClone(loaded);local.worlds[0].views![id].graph.showDomains=false
+ const saved=await saveWorkspace(local)
+ assert.equal(saved.worlds[0].views![id].name,'外部图');assert.equal(saved.worlds[0].nodes.find(n=>n.id===id)?.name,'外部图');assert.equal(saved.worlds[0].views![id].graph.showDomains,false)
+ const changed=structuredClone(saved.worlds[0].views![id]);changed.name='远端';disk.files[world.id][file]=JSON.stringify(changed)
+ const competing=structuredClone(saved);competing.worlds[0].views![id].name='本地'
+ await assert.rejects(saveWorkspace(competing),MarkdownConflictError)
+ clearMarkdownConflict();disk.files[world.id][file]='broken';const count=disk.saves
+ await assert.rejects(saveWorkspace(saved),/未覆盖磁盘文件/);assert.equal(disk.saves,count)
 })

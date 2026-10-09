@@ -14,5 +14,5 @@ export function pluginFolderPath(workspace:Workspace,id:string|null):PluginFolde
 }
 export function removePluginFolder(workspace:Workspace,id:string):Workspace {
   const folder=workspace.pluginFolders?.find(f=>f.id===id);if(!folder)return workspace
-  return {...workspace,pluginFolders:workspace.pluginFolders?.filter(f=>f.id!==id).map(f=>f.parentId===id?{...f,parentId:folder.parentId}:f),functions:workspace.functions?.map(fn=>fn.folderId===id?{...fn,folderId:folder.parentId}:fn)}
+  return {...workspace,tools:workspace.tools?.map(tool=>tool.folderId===id?{...tool,folderId:folder.parentId}:tool),pluginFolders:workspace.pluginFolders?.filter(f=>f.id!==id).map(f=>f.parentId===id?{...f,parentId:folder.parentId}:f),functions:workspace.functions?.map(fn=>fn.folderId===id?{...fn,folderId:folder.parentId}:fn)}
 }

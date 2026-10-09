@@ -8,7 +8,7 @@ export function usePageState<T>(key:string,initial:T|(()=>T)):[T,Dispatch<SetSta
   if(memory)memory.set(key,value)
   return [value,setValue]
 }
-const scrollSelector='.page-scroll,.entity-list,.graph-config-content,.message-scroll,.markdown-code-editor,.flow-library'
+const scrollSelector='.model-management-scroll,.page-scroll,.entity-list,.graph-config-content,.interface-config-body,.message-scroll,.markdown-code-editor,.flow-library'
 export default function PageSession({memory,children}:{memory:PageMemory;children:ReactNode}) {
   const root=useRef<HTMLDivElement>(null)
   useLayoutEffect(()=>{

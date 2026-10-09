@@ -12,12 +12,12 @@
 | `src/model/graphGeometry.ts` | 多选整体位移、动态连线画布范围、边缘平移速度、光标锚点缩放 |
 | `src/model/models.ts`、`themes.ts` | 模型连接配置、主题色、旧工作区兼容 |
 | `src/services/storage.ts` | 加载、外部刷新、排队保存、导入替换与同步冲突处理 |
-| `src/ui/AppRoot.tsx` | 页面切换、三种侧边栏、项目树、会话树与同步调度 |
+| `src/ui/AppRoot.tsx` | 页面切换、四种侧边栏、项目树、会话树与同步调度 |
 | `src/ui/App.tsx` | 对象字段、实例列表、集合页、关系网和通用视图配置 |
 | `src/ui/DocumentWorkspace.tsx`、`MarkdownSourceEditor.tsx` | MD 导入、可编辑双栏源码面板及固定顶栏标题、双向编辑与定位高亮 |
 | `src/ui/SchemaEditor.tsx`、`SortHandle.tsx` | 属性结构编辑、属性和实例共用的指针排序 |
 | `src/ui/GraphConfigPage.tsx`、`GraphEdge.tsx`、`ColorPicker.tsx` | 实例映射、线条填充与外边框、箭头、文字开关、背景域、自定义 ARGB 颜色预设网格 |
-| `src/ui/ChatPage.tsx`、`ModelSelector.tsx`、`ModelsPage.tsx` | 本地对话、模型选择及连接编辑 |
+| `src/ui/ChatPage.tsx`、`ModelSelector.tsx`、`ModelsPage.tsx` | 实际模型/Agent 对话、模型选择及连接编辑 |
 | `src/ui/SettingsPage.tsx`、`theme.css`、`style.css` | 主题设置、界面布局、滚动条与动画 |
 | `src/ui/MapPage.tsx` | 占满操作区的地图示意界面 |
 | `src-tauri/src/lib.rs` | 桌面文件读取、路径范围校验、写入前比较 |
@@ -62,7 +62,7 @@ Markdown 一级标题表示类、二级标题表示实例，后续标题表示�
 
 ## 界面与交互实现
 
-- 创作、插件、设置使用不同侧边栏。创作侧边栏的“我的项目”包含全部世界；选择世界打开自身集合页。
+- 创作、插件、模型、设置使用不同侧边栏。创作侧边栏的“我的项目”包含全部世界；选择世界打开自身集合页。
 - 集合、文件与视图可折叠；会话和新建聊天位于聊天框树下。创建入口和项目树统一滚动；创作树使用右对齐的向下/向右展开箭头，单击打开页面与箭头/双击展开相互独立，引导线按父对象图标对齐，不延伸到侧边栏底部。
 - 文件字段与实例名称直接编辑。属性和实例使用共用指针排序，提供随光标移动的副本、动态占位及其他项平滑让位，布局计算位于 `sortGeometry.ts`，避开 Tauri 原生拖放拦截；同父排序、取消及自动滚动见交互文档。
 - Markdown 源码使用独立双栏布局，为编辑列留出空间；人物详情仍为右侧浮动面板。源码通过按钮或 Esc 关闭，空白点击保持打开。源码可编辑，标题分级放大加粗，左侧选中字段时按实际排版定位并高亮对应行。
@@ -89,13 +89,15 @@ Markdown 一级标题表示类、二级标题表示实例，后续标题表示�
 | --- | --- |
 | 项目树、对象编辑、排序、MD 导入及双向同步 | 已实现 |
 | 关系网选择、整体拖动、方向箭头、详情与基础样式 | 已实现 |
-| 模型新增/编辑/停用/删除与聊天模型选择 | 已实现配置，未发起模型请求 |
-| 聊天会话管理与用户消息保存 | 已实现本地功能，未生成模型回复 |
+| 模型新增/编辑/停用/删除与聊天模型选择 | 已实现配置、自动发现与请求 |
+| 聊天会话管理与用户消息保存 | 已实现会话及 LLM/Agent 回复 |
 | 地图全操作区 UI、地图文件/图例配置 | 已实现界面，地图加载与交互待接入 |
 | 关系线型、发光 | 划线类各自渲染，发光已应用；双实线待完善 |
 | Function 函数 | 脚本管理、测试、属性绑定、自动运行、Markdown 双向解析及返回值引用已实现；依赖系统运行环境 |
-| 技能、工具、插件安装 | 占位页面，功能待接入 |
-| LangChain、LangGraph、多 Agent、插图生成及章节自动写作 | 后续目标，尚未接入 |
+| HTTP 工具 | 注册、配置、Agent 调用已实现 |
+| 技能、插件安装 | 占位页面，功能待接入 |
+| Agent 节点工作流、ComfyUI 绘图 | 执行器和接口已实现；真实服务出图待验收 |
+| LangChain、LangGraph、多 Agent 协作、章节自动写作 | 后续目标 |
 
 构建通过不等于桌面 UI 验收通过。当前浏览器已验证拖动、双向编辑、高亮跳转及关系箭头，桌面实际交互仍需使用新版程序验收。
 
@@ -129,3 +131,55 @@ PageSession 按路由身份保存页面会话状态及滚动位置，usePageStat
 - TreeDisclosure.tsx：独立管理右侧 22px 展开按钮的事件，阻止事件传播，展开使用 ChevronDown，收起使用 ChevronRight。页面选择与子树展开由调用方分别处理。
 
 这些模块只调整界面呈现与动作入口，不增加保存格式，也不改变 Markdown 或 Function 类型协议。文档修改本身无需重新打包。
+
+## 模型执行模块
+
+`model/workflows.ts` 定义节点、端口、连线、DAG 校验和 Comfy API 图转换。`services/modelHttp.ts` 统一浏览器 fetch 与 Tauri 网络桥；`services/llm.ts` 实现模型发现与生成；`services/workflows.ts` 求值 Agent、编译绘图输入、提交及轮询 ComfyUI。`WorkflowEditor.tsx` 复用画布交互，`ModelWorkflowPage.tsx` 管理工作流与运行结果，`ToolsPage.tsx` 管理 HTTP 工具。后端 `model_http.rs` 使用 reqwest，支持 JSON 和带鉴权图片读取。配置、图和变量保存于 workspace.json，旧模型连接 ID 保留。详见 [模型与智能体](models-and-agents.md)。
+
+## 顶栏动作复用
+
+TopbarActions 读取当前页 heading-actions 或 editor-file-actions 中的真实按钮，以图标入口调用原按钮；监听页面按钮变化，同步禁用与开关状态。源按钮始终保留事件与确认逻辑，非文件夹页仅隐藏源按钮组，文件夹页保留两处入口。Markdown 标题开关仍固定右侧，顶栏动作组根据源码列宽度向左过渡。工作流工具栏通过 React toolbar 插槽接收配置与运行按钮，避免双工具栏。
+
+## 打开文件所在位置（2026-10-09）
+
+主顶栏动作组提供 FolderOpen（20px），用于在 Windows 资源管理器中定位并选中当前实际存储对象。点击前等待同一保存队列完成一次保存，确保新建文件已落盘；同步冲突或定位失败在同步提示区显示，不跳过已有冲突保护。
+
+| 页面 | 实际位置 |
+| --- | --- |
+| 文件操作 | user/worlds/<世界 ID>/<类文件>.md |
+| 属性配置 | 同目录的 <类文件>.schema.json |
+| 世界/集合 | user/worlds/<世界 ID> 文件夹；集合是逻辑树，未建立独立实体目录 |
+| 我的项目 | user/workspace.json |
+| Function | user/functions/<函数 ID>.js、.py 或 .flow |
+| Function 文件夹 | user/functions；插件文件夹为逻辑组织 |
+| 模型、SD 工作流、Agent、Tool、主题 | user/workspace.json（当前统一持久化文件） |
+| 关系网/地图/聊天配置 | 世界目录中的对应配置 JSON |
+| 关系网、地图等操作画布 | 无对应独立内容文件，不显示按钮 |
+
+按钮悬停提示实际相对路径。浏览器的配置位于 localStorage，不能打开系统资源管理器，因此按钮禁用并提示桌面版可用。后端只接受 user 目录内的独立路径组件，拒绝空路径、路径穿越、绝对路径、不存在文件以及解析后指向目录外的链接；资源管理器使用独立进程参数，不经过 shell。包含中文和空格文件名的解析、越界及缺失路径拒绝已通过 Rust 测试。
+
+## 工作流类型与编辑层（2026-10-09）
+
+`model/workflowValues.ts` 定义变量类型、信封、Messages/Image、类型成员目录与校验；`services/workflows.ts` 根据声明执行并维护命名输出与成功运行变量克隆。`services/workflowImages.ts` 负责保存适配，桌面 `save_workflow_image` 在 user/images 内创建新文件，拒绝路径和同名覆盖。
+
+`model/graphEditing.ts` 负责片段复制、ID 重建、删除关联线、矩形相交与双向端口规范化。`ui/useGraphEditing.ts` 负责剪贴板与图快照历史，`ui/useCanvasEditing.ts` 负责选区、组拖动、连接手势与快捷键。Agent/SD 与 Function Flow 复用交互层，保留独立图 schema。详见 [workflow-types.md](workflow-types.md)。
+
+
+## 工作流运行观察与变量池（2026-10-09）
+
+执行状态独立于持久化图定义：节点依次发出 waiting、running、complete，异常标记 error，取消标记 cancelled。运行面板将当前执行节点高亮；每条实际经过的连线记录本次输出及实际类型，显示紧凑摘要，悬停查看完整值。观察事件使用副本，不能改变程序数据。编辑器播放在节点开始时短暂停留，普通调用不附加展示延迟。
+
+变量池维护 `{id,type,value}` 类型信封。id 是稳定身份，name 是可编辑的索引；节点通过下拉列表选择兼容类型的变量。新建、改名、改类型、初始值编辑和绑定节点修改纳入同一撤销快照。改名同步节点绑定以及各世界的 Agent memory；改类型同步 value 端口，兼容值保留，不兼容值恢复类型默认值。连接保留，运行校验提示不兼容类型。旧的原生值可以推断基础类型，无法推断的对象需明确指定类型。
+
+运行使用工作副本，变量池实时显示变量写入结果；成功后提交 Agent 记忆，失败或取消不提交临时值。变量池显示最近运行值时，初始值编辑仍明确标注，避免混淆。运行中禁用图定义与变量编辑，保留平移、缩放、查看完整值及面板开关。
+
+ComfyUI 原生节点的执行通过 WebSocket 按 prompt_id 过滤，桌面端使用原生连接并通过 Tauri 事件桥接，支持 Bearer 认证。浏览器使用 WebSocket。原生 ComfyUI 公开事件不包含所有 Tensor 的实际值，因此对应连线显示“服务端数据 · 类型”；不会编造 Tensor 数值。宿主节点的值正常展示。事件通道不可用时提示并继续 HTTP history 查询。真实模型与 GPU 联调仍需要实际服务。
+
+节点库与变量池都采用固定 header 加独立滚动内容区。节点库标题、收起按钮和工具栏保持顶边对齐，滚动只作用于搜索与分类列表；此结构同步用于 Function Flow。变量池位于画布右下方，可用分页按钮滑动收起。
+
+最新图标规范覆盖早期方案：模型入口 Sparkles，插件 Puzzle；LLM 使用与模型项一致的 Bot，SD 项及节点使用 SquareSparkles，工具独立分类 Wrench；String 为 Letters，Boolean 为 Binary，其他变量类型 ScanBox，方法 FileCodeCorner，属性 FileBox。缺少的 Lucide 图标使用本地官方 SVG 与 ISC 授权，无运行时下载。
+
+
+## 界面操作类型的对象投影（2026-10-09）
+
+采用 `World.views[id]: InterfaceView`，每个视图必选父 ClassDocument，显示元素由稳定 ID 路径绑定，支持当前实例与固定对象、Markdown 序列化文本与内容值。关系网和地图共享绑定解析器；源对象编辑写回原 Markdown，布局独立保存到 `<view-id>.view.json`。集合层级是 JSON 虚拟组织，所有文件继续平铺在原 world 目录，另输出 world-index.json 组织清单；旧项目自动补默认绑定，不移动文件。视图配置纳入读取、三方合并与写前竞态检查。详细结构、上下文和兼容边界见 [界面操作类型与数据结构](interface-views.md)。

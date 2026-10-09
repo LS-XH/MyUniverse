@@ -2,14 +2,14 @@ import { usePageState } from './PageSession'
 import MarkdownSourceEditor from './MarkdownSourceEditor'
 import { useEffect, useLayoutEffect, useRef, useState, type SyntheticEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { PanelRight, FileUp, X } from 'lucide-react'
+import { PanelRight, FileUp, X, Layers3 } from 'lucide-react'
 import { ClassDocument, World } from '../model/types'
 import { documentMarkdown, markdownLocations, parseDocumentMarkdown } from '../model/markdown'
 import { DocumentEditor } from './App'
 import { replaceDocumentFromImport } from '../services/storage'
 
-export default function DocumentWorkspace({ world, doc, onChange, onDelete, focusEntity, focusToken }: {
-  focusEntity?:string;focusToken?:number;world: World; doc: ClassDocument; onChange: (doc: ClassDocument) => void; onDelete: () => void
+export default function DocumentWorkspace({ world, doc, onChange, onDelete, focusEntity, focusToken, onNewView }: {
+  onNewView?:()=>void;focusEntity?:string;focusToken?:number;world: World; doc: ClassDocument; onChange: (doc: ClassDocument) => void; onDelete: () => void
 }) {
   const [preview, setPreview] = usePageState('document:preview',false)
   const root=useRef<HTMLDivElement>(null),[topbar,setTopbar]=useState<HTMLElement|null>(null)
@@ -50,6 +50,7 @@ export default function DocumentWorkspace({ world, doc, onChange, onDelete, focu
     timer.current=setTimeout(()=>applySource(text),350)
   }
   const tools = <>
+    {onNewView&&<button className="ghost" onClick={onNewView}><Layers3 size={16}/> 新建界面</button>}
     <input ref={fileInput} className="hidden-file-input" type="file" accept=".md,.markdown,text/markdown" aria-label="选择 Markdown 文件" onChange={async e => {
       const file = e.target.files?.[0]
       e.target.value = ''
