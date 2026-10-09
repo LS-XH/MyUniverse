@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { reorder } from '../src/ui/SortHandle'
 import { documentMarkdown, parseDocumentMarkdown } from '../src/model/markdown'
 import { createWorld } from '../src/model/templates'
+import { sortOffsets } from '../src/model/sortGeometry'
 
 test('sorting moves before and after siblings without mutating data or crossing parents',()=>{
   const items=[{id:'a'},{id:'b'},{id:'c'}]
@@ -18,4 +19,10 @@ test('entity sorting survives Markdown serialization and reload with identity an
   const sorted={...doc,entities:reorder(doc.entities,doc.entities[0].id,doc.entities[2].id,true)}
   assert.deepEqual(parseDocumentMarkdown(documentMarkdown(sorted),sorted,world),sorted)
   assert.deepEqual(sorted.entities.map(e=>e.name),['乙','丙','甲'])
+})
+test('dynamic sorting reserves the dragged height and closes its old gap for variable-size cards',()=>{
+  assert.deepEqual(sortOffsets([60,180,80],14,0,2),[288,-74,-74])
+  assert.deepEqual(sortOffsets([60,180,80],14,2,0),[94,94,-268])
+  assert.deepEqual(sortOffsets([60,180,80],14,1,1),[0,0,0])
+  assert.deepEqual(sortOffsets([40],0,0,0),[0])
 })

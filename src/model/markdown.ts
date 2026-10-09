@@ -1,19 +1,30 @@
 import { ClassDocument, FieldValue, World } from './types'
 import { escapeTextHeadings, parseDocumentMarkdown } from './markdownParser'
+import { functionLink } from './functions'
 export { parseDocumentMarkdown } from './markdownParser'
+export function markdownHeadingLevels(text:string):number[] {
+  let fence:{char:string;length:number}|null=null
+  return text.split('\n').map(line=>{
+    const marker=line.match(/^ {0,3}(`{3,}|~{3,})/)
+    if(marker){if(!fence)fence={char:marker[1][0],length:marker[1].length};else if(marker[1][0]===fence.char&&marker[1].length>=fence.length&&/^ {0,3}(`+|~+)\s*$/.test(line))fence=null;return 0}
+    return fence?0:(line.match(/^ {0,3}(#+)\s/)?.[1].length||0)
+  })
+}
 export function classLink(world: World, classId: string, entityId: string): string {
   const doc=world.documents.find(d=>d.id===classId), entity=doc?.entities.find(e=>e.id===entityId)
   return doc && entity ? `[${entity.name}](${doc.fileName}#${encodeURIComponent(entity.name)})` : ''
 }
-function fieldMarkdown(fields: FieldValue[], depth: number): string {
+export function fieldMarkdown(fields: FieldValue[], depth: number): string {
   return fields.map(field => {
     const heading = `${'#'.repeat(depth)} ${field.key}\n`
     const value = field.value ? `\n${escapeTextHeadings(field.value, true)}\n` : ''
-    return heading + value + (field.children.length ? `\n${fieldMarkdown(field.children, depth+1)}` : '')
+    const results=(field.functionResults||[]).filter(r=>!r.error).map(r=>`${'#'.repeat(depth+1)} ${functionLink(r)}\n\n${escapeTextHeadings(r.value,true)}\n${r.typedValue?`\n<!-- function-value:${encodeURIComponent(JSON.stringify({typedValue:r.typedValue,contextKey:r.contextKey}))} -->\n`:''}`).join('\n')
+    return heading + value + (field.children.length ? `\n${fieldMarkdown(field.children, depth+1)}` : '') + (results?`\n${results}`:'')
   }).join('\n')
 }
+export function entityMarkdown(entity:ClassDocument['entities'][number]):string {return `## ${entity.name}\n\n${fieldMarkdown(entity.fields,3)}`.replace(/\n+$/,'')+'\n'}
 export function documentMarkdown(doc: ClassDocument): string {
-  return `# ${doc.name}\n\n${doc.entities.map(e=>`## ${e.name}\n\n${fieldMarkdown(e.fields,3)}`).join('\n')}`.trimEnd()+'\n'
+  return `# ${doc.name}\n\n${doc.entities.map(e=>`## ${e.name}\n\n${fieldMarkdown(e.fields,3)}`).join('\n')}`.replace(/\n+$/,'')+'\n'
 }
 export function markdownLocations(doc:ClassDocument):Record<string,{key:number;value:number;end:number}> {
   const source=documentMarkdown(doc),locations:Record<string,{key:number;value:number;end:number}>={}

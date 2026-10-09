@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { usePageState } from './PageSession'
 import { Send, Sparkles } from 'lucide-react'
 import { Conversation, ModelConnection, World, uid } from '../model/types'
 import ModelSelector from './ModelSelector'
 
 export default function ChatPage({world,onChange,models,onModelSettings}:{world:World;onChange:(world:World)=>void;models:ModelConnection[];onModelSettings:()=>void}) {
-  const [draft,setDraft]=useState('')
+  const [draft,setDraft]=usePageState('chat:draft','')
   const conversation=(world.chat.conversations||[]).find(item=>item.id===world.chat.activeConversationId)
   const send=()=>{const content=draft.trim();if(!content)return;const current:Conversation=conversation||{id:uid(),title:content.slice(0,24),messages:[],createdAt:Date.now()};const next={...current,messages:[...current.messages,{id:uid(),role:'user' as const,content,createdAt:Date.now()}]};onChange({...world,chat:{...world.chat,conversations:conversation?world.chat.conversations.map(c=>c.id===current.id?next:c):[...(world.chat.conversations||[]),next],activeConversationId:current.id}});setDraft('')}
   const composer=<div className="modern-composer"><textarea value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}} placeholder="向创作助手发送消息…" rows={2}/><div className="composer-footer"><ModelSelector models={models} value={world.chat.modelId||null} onChange={modelId=>onChange({...world,chat:{...world.chat,modelId}})} onSettings={onModelSettings}/><button className="send-button" disabled={!draft.trim()} onClick={send} title="发送"><Send size={17}/></button></div></div>

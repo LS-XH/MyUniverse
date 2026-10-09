@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { ClassDocument, Workspace, World } from '../src/model/types'
 import { createWorld } from '../src/model/templates'
-import { documentMarkdown, markdownLocations, parseDocumentMarkdown } from '../src/model/markdown'
+import { documentMarkdown, markdownLocations, markdownHeadingLevels, parseDocumentMarkdown } from '../src/model/markdown'
 import { mergeThreeWay } from '../src/model/merge'
 import { loadWorkspace, saveWorkspace, refreshWorkspace, MarkdownConflictError, applySyncResult, clearMarkdownConflict, replaceDocumentFromImport } from '../src/services/storage'
 
@@ -41,6 +41,9 @@ test('Markdown locations distinguish nested keys, multiline values and entity na
     })
     visit(entity.fields,3)
   }
+})
+test('heading display respects code fences, escaped headings and deep object levels',()=>{
+  assert.deepEqual(markdownHeadingLevels('# 类\n## 实例\n```md\n# 正文\n```\n\\### 转义\n#### 属性\n####### 深层'),[1,2,0,0,0,0,4,7])
 })
 test('text headings, escapes, Markdown body and nesting deeper than six are preserved', () => {
   const template: ClassDocument = { id: 'story', name: '故事', fileName: '故事.md', schema: [{ id: 'body', keyType: 'Const', key: '正文', valueType: 'Content' }], entities: [] }
@@ -179,9 +182,14 @@ test('model settings and chat selection survive simultaneous external Markdown u
   const local=structuredClone(loaded)
   local.models=[{id:'connection',name:'本地模型',model:'local',baseUrl:'http://localhost:1234/v1',apiKey:'',enabled:true}]
   local.worlds[0].chat.modelId='connection'
+  local.functions=[{id:'trim-function',name:'去除空格',language:'js',code:'function transform(input){return input.trim();}'}]
+  local.pluginFolders=[{id:'plugin-folder',name:'文本处理',section:'functions',parentId:null}]
+  local.functions[0].folderId='plugin-folder'
   disk.files[world.id]['人物列表.md']=documentMarkdown(person(edit(loaded,'人物性格','外部修改')))
   const saved=await saveWorkspace(local)
   assert.deepEqual(saved.models,local.models)
+  assert.deepEqual(saved.functions,local.functions)
+  assert.deepEqual(saved.pluginFolders,local.pluginFolders)
   assert.equal(saved.worlds[0].chat.modelId,'connection')
   assert.equal(value(person(saved),'人物性格'),'外部修改')
 })

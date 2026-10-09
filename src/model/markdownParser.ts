@@ -1,4 +1,6 @@
 import { ClassDocument, Entity, FieldSchema, FieldValue, World, uid } from './types'
+import { functionInput, parseFunctionLink } from './functions'
+import { typedValueMarkdown, validateTypedValue } from './functionValues'
 
 // Escape property-like headings inside text. Fenced code remains verbatim.
 export function escapeTextHeadings(text: string, escape: boolean): string {
@@ -51,7 +53,7 @@ function emptyField(schema: FieldSchema, previous?: FieldValue): FieldValue {
   return { id: previous?.id || uid(), schemaId: schema.id, key: schema.keyType === 'Const' ? schema.key : '', value: '', children: (schema.children || []).filter(s => !s.repeatable).map(s => emptyField(s, previous?.children.find(field => field.schemaId === s.id))) }
 }
 function referenceClass(value: string, world?: World): string | undefined {
-  const match = value.match(/^\[[^\]]*\]\(([^#]+)#.+\)$/)
+  const match = value.match(/^\[[^\]]*\]\(([^#]+)#[^)]+\)/)
   return match ? world?.documents.find(doc => doc.fileName === match[1])?.id : undefined
 }
 function canonicalReference(value: string): string {
@@ -67,8 +69,8 @@ export function parseDocumentMarkdown(markdown: string, previous: ClassDocument,
   const rawValue = (node: Heading, descendants = false) => escapeTextHeadings(trimBlankLines(lines.slice(node.start + 1, descendants ? node.end : node.children[0]?.start ?? node.end).join('\n')), false)
   if (rawValue(root)) throw new Error('一级类标题下的正文没有对应实例，请将正文移到一个二级实例标题下面')
   const infer = (node: Heading): FieldSchema => {
-    const value = rawValue(node), classId = referenceClass(value, world)
-    return { id: uid(), keyType: 'Const', key: node.key, valueType: node.children.length ? 'Object' : classId ? 'Class' : value.includes('\n') ? 'Content' : 'Text', ...(classId ? { classId } : {}), ...(node.children.length ? { children: [] } : {}) }
+    const value = rawValue(node), classId = referenceClass(value, world),hasChildren=node.children.some(child=>!parseFunctionLink(child.key))
+    return { id: uid(), keyType: 'Const', key: node.key, valueType: hasChildren ? 'Object' : classId ? 'Class' : value.includes('\n') ? 'Content' : 'Text', ...(classId ? { classId } : {}), ...(hasChildren ? { children: [] } : {}) }
   }
   function addBody(body: string, schemas: FieldSchema[], fields: FieldValue[]) {
     if (!body) return
@@ -82,7 +84,7 @@ export function parseDocumentMarkdown(markdown: string, previous: ClassDocument,
     const used = new Set<string>(), counts = new Map<string, number>()
     const fields = nodes.map(node => {
       let target = schemas.find(s => s.keyType === 'Const' && s.key === node.key)
-      if (!target) target = schemas.find(s => s.keyType === 'Class' && /^\[.*\]\(.*#.*\)$/.test(node.key) && (!s.classId || referenceClass(node.key, world) === s.classId))
+      if (!target) target = schemas.find(s => s.keyType === 'Class' && /^\[.*\]\(.*#.*\)/.test(node.key) && (!s.classId || referenceClass(node.key, world) === s.classId))
       if (!target) target = schemas.find(s => s.keyType === 'Text' && (s.repeatable || !counts.has(s.id)))
       if (!target) { target = infer(node); schemas.push(target) }
       counts.set(target.id, (counts.get(target.id) || 0) + 1)
@@ -91,18 +93,35 @@ export function parseDocumentMarkdown(markdown: string, previous: ClassDocument,
       const prior = old.find(field => !used.has(field.id) && field.schemaId === target.id && field.key === key)
         || old.find(field => !used.has(field.id) && field.schemaId === target.id)
       if (prior) used.add(prior.id)
+      const functionNodes=node.children.filter(child=>parseFunctionLink(child.key))
+      const propertyNodes=node.children.filter(child=>!parseFunctionLink(child.key))
+      const originalValue=()=>escapeTextHeadings(trimBlankLines(lines.slice(node.start+1,functionNodes[0]?.start??node.end).join('\n')),false)
       let children: FieldValue[] = [], value = ''
       if (target.valueType === 'Object') {
         target.children ||= []
-        children = bind(node.children, target.children, prior?.children || [])
+        children = bind(propertyNodes, target.children, prior?.children || [])
         addBody(rawValue(node), target.children, children)
-      } else if (target.valueType !== 'Null') value = rawValue(node, true)
-      else if (rawValue(node, true)) throw new Error(`“${node.key}”配置为 Null，不能包含内容；请先修改属性类型`)
+      } else if (target.valueType !== 'Null') value = originalValue()
+      else if (originalValue()) throw new Error(`“${node.key}”配置为 Null，不能包含内容；请先修改属性类型`)
       if (target.valueType === 'Class') value = canonicalReference(value)
       if (value && target.valueType === 'Integer' && !/^-?\d+$/.test(value)) throw new Error(`“${node.key}”需要整数`)
       if (value && target.valueType === 'Decimal' && !/^-?\d+(\.\d+)?$/.test(value)) throw new Error(`“${node.key}”需要小数`)
       if (value && target.valueType === 'Data' && !/^\d{8}$/.test(value)) throw new Error(`“${node.key}”需要 YYYYMMDD 格式日期`)
-      return { id: prior?.id || uid(), schemaId: target.id, key, value, children }
+      const field:FieldValue={ id: prior?.id || uid(), schemaId: target.id, key, value, children }
+      if(functionNodes.length){
+        const input=functionInput(field,target,world)
+        field.functionResults=functionNodes.map(child=>{
+          const link=parseFunctionLink(child.key)!,previousResult=prior?.functionResults?.find(r=>r.functionId===link.functionId)
+          if(!target.functionIds?.includes(link.functionId))target.functionIds=[...(target.functionIds||[]),link.functionId]
+          const raw=rawValue(child,true),metadata=raw.match(/\n?<!-- function-value:([^\n]+) -->\s*$/)
+          let typed:Pick<import('./types').FunctionResult,'typedValue'|'contextKey'>={}
+          let resultValue=metadata?raw.slice(0,metadata.index).trimEnd():raw
+          if(metadata){try{const decoded=JSON.parse(decodeURIComponent(metadata[1]));typed={typedValue:decoded.typedValue,...(typeof decoded.contextKey==='string'?{contextKey:decoded.contextKey}:{})};if(typed.typedValue){typed.typedValue=validateTypedValue(typed.typedValue,undefined,world);const canonical=typedValueMarkdown(typed.typedValue,world);if(canonical.trimEnd()===resultValue)resultValue=canonical;else typed={}}}catch{throw new Error(`函数“${link.name}”返回值类型元数据无效`)}}
+          const contextKey=typed.contextKey||(previousResult?.input===input&&previousResult.value===resultValue?previousResult.contextKey:undefined)
+          return {...link,input,value:resultValue,...typed,...(contextKey?{contextKey}:{}),...(previousResult?.input===input&&previousResult.source?{source:previousResult.source}:{})}
+        })
+      }else if(prior?.functionResults?.some(r=>r.error))field.functionResults=prior.functionResults.filter(r=>r.error)
+      return field
     })
     for (const s of schemas) if (!s.repeatable && !fields.some(f => f.schemaId === s.id)) fields.push(emptyField(s, old.find(f => f.schemaId === s.id)))
     return fields
