@@ -4,7 +4,7 @@
 
 ## 类型接口（版本 2）
 
-新建函数默认使用 `transform(self, input)`。脚本接收只读数据快照，返回值不会直接修改调用实例。函数设置中的“返回类型”是约束，而不是依靠 JS/Python 原生类型猜测：Text 和 Content、Integer 和 Decimal、日期和普通文字始终区分。
+新建函数默认使用 `transform(self, input)`。JS 脚本通过主程序对象门面读取世界，可通过共用写入接口修改世界；返回值仍是独立派生值。函数设置中的“返回类型”是约束，而不是依靠 JS/Python 原生类型猜测：Text 和 Content、Integer 和 Decimal、日期和普通文字始终区分。
 
 ```js
 // 返回类型选择 Object；返回类规范可留空，或选择一个已有类。
@@ -73,7 +73,7 @@ def transform(input: str) -> str:
     return input.strip()
 ```
 
-桌面版调用系统 PATH 中的 Node.js 或 Python 3；Python 会尝试 `python`、`python3`、`py -3`。运行环境未随 exe 打包。JS 桌面脚本可使用 CommonJS `require`，浏览器 JS 在独立 Worker 中运行，不支持 Node 模块；Python 仅在桌面运行。脚本以当前用户权限执行，并非权限隔离的沙箱。每次执行限时 5 秒，脚本和输入最多 1 MB，输出限制 1 MB；日志不混入返回值。
+JS/Flow 在主程序执行，不再通过 Node 或 Worker，也不支持 CommonJS require。Python 仅在桌面调用系统 Python 3，尝试 python、python3、py -3。JS 异步等待最多 5 秒，无法强行终止主线程同步代码；Python 保留进程硬超时。Function 输入/输出限制 1 MB。共同接口、提交和兼容边界见 [主程序脚本接口与 Tool](script-runtime-and-tools.md)。
 
 ## 属性绑定与输入
 
@@ -121,11 +121,11 @@ Flow 与脚本共用属性绑定、自动运行和返回值引用。
 
 函数注册信息和代码缓存位于 `user/workspace.json`，脚本文件位于 `user/functions/<函数ID>.js` 、`.py` 或 `.flow`。世界 Markdown 通过相对链接关联脚本；属性 schema JSON 保存 `functionIds`。启动时读取注册脚本文件的代码，因此关闭软件后可用外部编辑器修改脚本，再重新启动。运行中脚本编辑以应用内编辑器为准，外部脚本变更没有实时监听。
 
-删除函数会解除所有世界的绑定、移除其结果，并将使用其返回值的 Class 引用恢复为原值；保存后删除对应注册脚本文件。技能和工具页面仍为占位，未实现插件安装或 Agent 调用。
+删除函数会解除所有世界的绑定、移除其结果，并将使用其返回值的 Class 引用恢复为原值；保存后删除对应注册脚本文件。技能安装尚未实现；Tool 已支持主程序 JS、HTTP 及模型调用桥梁。
 
 ## 插件文件夹与树视图
 
-插件 → 函数支持嵌套文件夹，可从侧栏行内按钮或主操作区新建。新建、导入函数归入当前文件夹，编辑页可修改所属文件夹。文件夹支持重命名；删除文件夹将其函数及子文件夹移到上一级。分类、层级和归属保存到工作区 JSON，脚本仍位于 user/functions/<函数ID>.js、py或flow，现有 Markdown 链接保持有效。技能与工具也提供同样的文件夹组织功能，其文件编辑尚未实现。
+插件 → 函数支持嵌套文件夹，可从侧栏行内按钮或主操作区新建。新建、导入函数归入当前文件夹，编辑页可修改所属文件夹。文件夹支持重命名；删除文件夹将其函数及子文件夹移到上一级。分类、层级和归属保存到工作区 JSON，脚本仍位于 user/functions/<函数ID>.js、py或flow，现有 Markdown 链接保持有效。技能与工具也提供同样的文件夹组织；Tool 提供脚本、Schema 和 MCP 元数据编辑。
 
 ## Flow：卡片与代码组合
 
@@ -155,7 +155,7 @@ def transform(input, world):
 
 `world.classes()` 枚举 Class；`get_class(ID或名称)` 获取 Class。Class 提供 `instances()`、`get_instance()`、`schema()`、`markdown()`；实例和成员提供 `members()`、`get_member()`、`markdown()`，成员另有 `value()`。对象具有 `id`、`name`。名称重复或对象不存在时报告错误，推荐使用助手生成的 ID 调用。
 
-API 是当前世界的只读快照，可在代码中自由组合，不能通过它修改创作数据。读取时排除本函数自身的旧返回值，避免结果不断嵌套。原始实例内容或 schema 变化会重新计算使用 world 的函数；仅移动卡片、改变主题或生成函数结果不会触发这种刷新。执行结束再次核对快照版本。
+JS API 通过主程序会话读取世界，支持 set_value、set_markdown 和 delete，成功后统一合并与保存；Python 使用快照与操作日志桥接。读取时排除本函数自身的旧返回值，避免结果不断嵌套。原始实例内容或 schema 变化会重新计算使用 world 的函数；仅移动卡片、改变主题或生成函数结果不会触发这种刷新。执行结束再次核对快照版本。
 
 Flow 在浏览器与桌面均编译为 JS 执行；Python 仍仅限桌面。`.flow` 结果链接、绑定与 Markdown 双向解析与 `.js`、`.py` 相同。启动时从对应 `.flow` 文件加载图，运行中外部文件变更没有实时监听。
 
@@ -163,8 +163,8 @@ Flow 在浏览器与桌面均编译为 JS 执行；Python 仍仅限桌面。`.fl
 
 函数页面使用独立固定标题和内容滚动区域，标题与内容共享居中宽度，统一配置、代码、测试区域间距。执行失败展示可复制的完整异常：JS 堆栈、Python Traceback、进程退出码及失败日志、运行环境启动错误。异常面板出现时自动滚动到该面板。支持 transform(input) 中直接访问 world，不强制增加第二个参数。
 
-### 桌面 JavaScript 模块兼容
-桌面执行器使用独立的 runner.cjs，确保 CommonJS 的 require 不受上级 package.json 中 type: module 影响；用户函数仍保存为 JS 脚本。已增加 ES 模块项目目录下运行脚本的回归测试。
+### 桌面 JavaScript 环境变更
+现行 JS 执行路径在 WebView 主程序内，旧 runner.cjs 不再由前端调用。依赖 Node require 的脚本须改写，Python 仍保留独立执行环境。
 
 ### Function 返回值只读成员视图
 函数成功结果根据 typedValue 渲染，与普通成员共享 field、object-body、text-reference、reference-trigger 等界面样式。Object 递归展示子成员；Text、Integer、Decimal、Data 使用只读输入框，Content 使用只读多行框；Class 值及 Class 引用键使用禁用的对象选择按钮，显示类名和实例名，不打开菜单。返回类规范存在时复用其成员键类型，动态文本键也使用只读输入框。Null 显示无内容，空 Object 显示无子成员。结果不提供增删或编辑操作，文本可复制；旧字符串结果显示在只读多行框。错误和等待状态保留，Markdown 序列化与结构元数据不变。

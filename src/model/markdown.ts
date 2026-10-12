@@ -1,6 +1,5 @@
 import { ClassDocument, FieldValue, World } from './types'
 import { escapeTextHeadings, parseDocumentMarkdown } from './markdownParser'
-import { functionLink } from './functions'
 export { parseDocumentMarkdown } from './markdownParser'
 export function markdownHeadingLevels(text:string):number[] {
   let fence:{char:string;length:number}|null=null
@@ -14,12 +13,15 @@ export function classLink(world: World, classId: string, entityId: string): stri
   const doc=world.documents.find(d=>d.id===classId), entity=doc?.entities.find(e=>e.id===entityId)
   return doc && entity ? `[${entity.name}](${doc.fileName}#${encodeURIComponent(entity.name)})` : ''
 }
+export function fieldHeading(field:FieldValue,depth:number):string {
+ const name=field.functionOrigin?.name.replace(/[&<>-]/g,c=>`&#${c.charCodeAt(0)};`).replace(/[\r\n]/g,' ')
+ return `${'#'.repeat(depth)} ${field.key}${name?` <!-- ${name} -->`:''}\n`
+}
 export function fieldMarkdown(fields: FieldValue[], depth: number): string {
   return fields.map(field => {
-    const heading = `${'#'.repeat(depth)} ${field.key}\n`
+    const heading = fieldHeading(field,depth)
     const value = field.value ? `\n${escapeTextHeadings(field.value, true)}\n` : ''
-    const results=(field.functionResults||[]).filter(r=>!r.error).map(r=>`${'#'.repeat(depth+1)} ${functionLink(r)}\n\n${escapeTextHeadings(r.value,true)}\n${r.typedValue?`\n<!-- function-value:${encodeURIComponent(JSON.stringify({typedValue:r.typedValue,contextKey:r.contextKey}))} -->\n`:''}`).join('\n')
-    return heading + value + (field.children.length ? `\n${fieldMarkdown(field.children, depth+1)}` : '') + (results?`\n${results}`:'')
+    return heading + value + (field.children.length ? `\n${fieldMarkdown(field.children, depth+1)}` : '')
   }).join('\n')
 }
 export function entityMarkdown(entity:ClassDocument['entities'][number]):string {return `## ${entity.name}\n\n${fieldMarkdown(entity.fields,3)}`.replace(/\n+$/,'')+'\n'}
@@ -29,9 +31,11 @@ export function documentMarkdown(doc: ClassDocument): string {
 export function markdownLocations(doc:ClassDocument):Record<string,{key:number;value:number;end:number}> {
   const source=documentMarkdown(doc),locations:Record<string,{key:number;value:number;end:number}>={}
   let cursor=0
-  const line=(offset:number)=>source.slice(0,offset).split('\n').length-1
+  const breaks:number[]=[]
+  for(let i=0;i<source.length;i++)if(source[i]==='\n')breaks.push(i)
+  const line=(offset:number)=>{let low=0,high=breaks.length;while(low<high){const mid=(low+high)>>>1;if(breaks[mid]<offset)low=mid+1;else high=mid}return low}
   const fields=(items:FieldValue[],depth:number)=>items.forEach(field=>{
-    const heading=`${'#'.repeat(depth)} ${field.key}\n`,start=source.indexOf(heading,cursor)
+    const heading=fieldHeading(field,depth),start=source.indexOf(heading,cursor)
     cursor=start+heading.length
     const valueStart=cursor+(field.value?1:0)
     if(field.value)cursor=valueStart+escapeTextHeadings(field.value,true).length

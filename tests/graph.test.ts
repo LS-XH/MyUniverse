@@ -57,3 +57,11 @@ test('relationship shafts stop before the arrow base and thicker arrows retain t
   }
   assert.ok(Math.hypot(relationGeometry(a,{x:500,y:0},20,1).left.x-relationGeometry(a,{x:500,y:0},20,1).right.x,relationGeometry(a,{x:500,y:0},20,1).left.y-relationGeometry(a,{x:500,y:0},20,1).right.y)>12)
 })
+
+test('personal network centers the selected card and places unique neighbors on a circle',async()=>{
+ const {personalGraphLayout}=await import('../src/model/graphGeometry')
+ const positions=personalGraphLayout('center',['center','incoming','outgoing'])
+ assert.deepEqual(positions.center,{x:-GRAPH_NODE_WIDTH/2,y:-GRAPH_NODE_HEIGHT/2})
+ for(const id of ['incoming','outgoing'])assert.ok(Math.abs(Math.hypot(positions[id].x+GRAPH_NODE_WIDTH/2,positions[id].y+GRAPH_NODE_HEIGHT/2)-280)<.001)
+ assert.deepEqual(Object.keys(personalGraphLayout('alone',['alone'])),['alone'])
+})

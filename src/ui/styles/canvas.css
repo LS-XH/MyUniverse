@@ -1,0 +1,273 @@
+/* Shared canvas family and its visual variants. */
+:where(.ui-node--text) {
+  --ui-fg: var(--text);
+}
+:where(.ui-node--themed) {
+  --ui-bg: var(--panel);
+}
+.ui-canvas--grid {
+  background: radial-gradient(circle at 30% 40%,#41566833,transparent 23%),radial-gradient(circle at 70% 70%,#4e4a6833,transparent 30%),linear-gradient(90deg,#ffffff05 1px,transparent 1px),linear-gradient(#ffffff05 1px,transparent 1px);
+}
+.ui-node--map-pin {
+  --ui-fg: #d0c1f5;
+  --ui-bg: #2f2a4d;
+  --ui-radius: var(--ui-radius-20);
+}
+.ui-node--person {
+  --ui-radius: var(--ui-radius-11);
+  --ui-shadow: 0 12px 28px var(--ui-shadow-4);
+  cursor: grab;
+}
+.ui-node--person.selected {
+  --ui-shadow: 0 0 0 2px #8b73e955,0 12px 28px var(--ui-shadow-5);
+}
+.ui-node--person.connecting {
+  --ui-border-color: #6ddbc3;
+}
+.domain {
+  --ui-border-width: 1px;
+  --ui-border-style: dashed;
+  --ui-border-color: currentColor;
+  --ui-radius: var(--ui-radius-32);
+}
+.marquee {
+  --ui-bg: #a999ef22;
+  --ui-border-width: 1px;
+  --ui-border-style: solid;
+  --ui-border-color: #bba9ff;
+}
+.ui-drag-preview--tree {
+  --ui-radius: var(--ui-radius-9);
+  --ui-bg: var(--panel);
+  --ui-shadow: 0 12px 32px var(--ui-shadow-5);
+  transform: none;
+  --ui-border-width: 0;
+  --ui-border-style: none;
+  --ui-border-color: currentColor;
+  outline: 0;
+  opacity: .96;
+}
+.ui-drag-preview--tree-placeholder {
+  --ui-border-width: 1px;
+  --ui-border-style: dashed;
+  --ui-border-color: var(--accent);
+  --ui-radius: var(--ui-radius-7);
+  --ui-bg: var(--active);
+  animation: tree-gap var(--ui-duration-160) ease-out;
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-drag-preview--tree-placeholder {
+    animation: none;
+  }
+  
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-drag-preview--tree {
+    transform: none;
+  }
+  
+}
+.ui-canvas--map {
+  --ui-bg: var(--canvas);
+}
+.ui-node--location {
+  --ui-bg: var(--mapPin);
+  --ui-radius: var(--ui-radius-20);
+  --ui-shadow: 0 5px 20px var(--ui-shadow-2);
+}
+.ui-canvas--graph {
+  --ui-bg: var(--canvas);
+  cursor: grab;
+}
+.ui-canvas--graph:active {
+  cursor: grabbing;
+}
+.ui-node--person {
+  --ui-bg: var(--graphNode);
+}
+.ui-node--person.selected {
+  --ui-border-color: var(--accent);
+}
+.connect-mode .person-node {
+  cursor: crosshair;
+}
+.ui-drag-preview--sort {
+  opacity: .8;
+  transition: none !important;
+  --ui-shadow: 0 16px 40px var(--ui-shadow-5) !important;
+  --ui-fg: var(--text);
+  --ui-bg: var(--panel);
+  --ui-radius: var(--ui-radius-10);
+}
+.ui-drag-preview--sort.schema-row {
+  outline: 1px solid var(--accent);
+}
+.ui-drag-preview--sort-placeholder {
+  --ui-border-width: 1px;
+  --ui-border-style: dashed;
+  --ui-border-color: var(--accent);
+  --ui-radius: var(--ui-radius-10);
+  --ui-bg: color-mix(in srgb,var(--active) 35%,transparent);
+  transition: top var(--ui-duration-180) cubic-bezier(.2,.8,.2,1);
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-drag-preview--sort-placeholder {
+    transition: none;
+  }
+  
+}
+.ui-node--flow {
+  --ui-radius: var(--ui-radius-11);
+  --ui-shadow: 0 8px 20px var(--ui-shadow-2);
+}
+.ui-node--flow.selected,
+.ui-node--flow.connecting {
+  --ui-border-color: var(--accent);
+  --ui-shadow: 0 0 0 2px color-mix(in srgb,var(--accent) 30%,transparent);
+}
+.ui-port--flow {
+  --ui-border-width: 2px;
+  --ui-border-style: solid;
+  --ui-border-color: var(--accent);
+  --ui-radius: 50%;
+  --ui-bg: var(--panel);
+  cursor: crosshair;
+  transition: background var(--ui-duration-150),box-shadow var(--ui-duration-150);
+}
+.ui-port--flow:hover,
+.ui-port--flow.connected,
+.ui-port--flow.output {
+  --ui-bg: var(--accent);
+}
+.ui-port--flow:hover {
+  --ui-shadow: 0 0 0 5px color-mix(in srgb,var(--accent) 20%,transparent);
+}
+.ui-drag-preview--template {
+  --ui-bg: var(--panel);
+  --ui-fg: var(--text);
+  --ui-radius: var(--ui-radius-9);
+  opacity: .8;
+  --ui-shadow: 0 8px 25px var(--ui-shadow-5);
+}
+.flow-selection-box {
+  --ui-border-width: 1px;
+  --ui-border-style: solid;
+  --ui-border-color: var(--accent);
+  --ui-bg: color-mix(in srgb,var(--accent) 16%,transparent);
+  --ui-radius: var(--ui-radius-3);
+}
+.ui-node--flow.execution-running {
+  --ui-border-color: var(--accent);
+  --ui-shadow: 0 0 0 2px color-mix(in srgb,var(--accent) 35%,transparent),0 0 25px color-mix(in srgb,var(--accent) 28%,transparent);
+  animation: workflow-running 1.3s ease-in-out infinite;
+}
+.ui-node--flow.execution-waiting {
+  --ui-border-color: color-mix(in srgb,var(--accent) 40%,var(--border));
+}
+.ui-node--flow.execution-complete {
+  --ui-border-color: color-mix(in srgb,var(--success) 70%,var(--border));
+}
+.ui-node--flow.execution-error {
+  --ui-border-color: var(--danger);
+  --ui-shadow: 0 0 14px color-mix(in srgb,var(--danger) 18.82%,transparent);
+}
+.ui-node--flow.execution-cancelled {
+  opacity: .75;
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-node--flow.execution-running {
+    animation: none;
+  }
+  
+}
+.ui-node--bound-map {
+  --ui-radius: var(--ui-radius-12);
+  --ui-shadow: 0 4px 20px var(--ui-shadow-2);
+  transition: border-color var(--ui-duration-180),box-shadow var(--ui-duration-180);
+}
+.ui-node--bound-map.selected {
+  --ui-border-color: var(--accent);
+  --ui-shadow: 0 0 0 2px color-mix(in srgb,var(--accent) 25%,transparent);
+}
+.ui-drag-preview--variable {
+  --ui-border-width: 0;
+  --ui-border-style: none;
+  --ui-border-color: currentColor;
+  --ui-bg: var(--panel);
+  --ui-fg: var(--text);
+  --ui-shadow: 0 8px 24px color-mix(in srgb,var(--border) 60%,transparent);
+}
+.ui-drag-preview--template {
+  --ui-border-width: 0;
+  --ui-border-style: none;
+  --ui-border-color: currentColor;
+}
+.ui-drag-preview--workflow {
+  transition: width var(--ui-duration-220) ease,height var(--ui-duration-220) ease;
+}
+.ui-drag-preview--visual {
+  transform-origin: top left;
+  transition: width var(--ui-duration-220) ease,height var(--ui-duration-220) ease,transform var(--ui-duration-220) ease,border-radius var(--ui-duration-220) ease,background var(--ui-duration-220) ease;
+}
+.ui-drag-preview--visual.is-compact {
+  --ui-border-width: 0;
+  --ui-border-style: none;
+  --ui-border-color: currentColor;
+  --ui-radius: var(--ui-radius-7);
+  --ui-shadow: none;
+}
+.ui-drag-preview--workflow.is-attached,
+.ui-drag-preview--workflow.is-morphing {
+  transition: left var(--ui-duration-180) ease,top var(--ui-duration-180) ease,width var(--ui-duration-220) ease,height var(--ui-duration-220) ease;
+}
+.ui-drag-preview--visual.is-attached {
+  --ui-bg: transparent;
+  --ui-shadow: none;
+  --ui-border-width: 0;
+  --ui-border-style: none;
+  --ui-border-color: currentColor;
+}
+.workflow-drag-visual:has(.workflow-drag-body .flow-node).is-card {
+  --ui-border-width: 0;
+  --ui-border-style: none;
+  --ui-border-color: currentColor;
+}
+.ui-drag-preview--visual.is-placeholder {
+  --ui-border-width: 1px;
+  --ui-border-style: dashed;
+  --ui-border-color: var(--accent);
+  --ui-bg: var(--active);
+  --ui-shadow: none;
+  --ui-radius: var(--ui-radius-11);
+}
+.ui-drop-slot--variable {
+  --ui-border-width: 1px;
+  --ui-border-style: dashed;
+  --ui-border-color: var(--border);
+  --ui-radius: var(--ui-radius-6);
+  --ui-fg: var(--muted);
+  --ui-bg: var(--input);
+  transition: background var(--ui-duration-180) ease,border-color var(--ui-duration-180) ease;
+}
+.variable-drop-target .flow-variable-placeholder {
+  --ui-bg: var(--active);
+  --ui-border-color: var(--accent);
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-drag-preview--workflow {
+    transition: none;
+  }
+  
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-drag-preview--visual {
+    transition: none;
+  }
+  
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-drop-slot--variable {
+    transition: none;
+  }
+  
+}

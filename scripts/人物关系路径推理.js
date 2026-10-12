@@ -1,118 +1,123 @@
-// Function v2: bind to 人物 -> 人物关系 -> one repeatable 人物 item (Object).
-// Set the return type to Object and leave the return class specification empty.
-// The item key identifies the target person; its 关系 value is a relation Class reference.
-
+// 绑定到人物类的整个“人物关系”Object；新版 void Function。
 function transform(self, input) {
-  if (input.type !== 'Object') {
-    throw new Error('请将函数绑定到“人物关系”下的单个人物关系项（Object）。');
+  if (input.type !== 'Object') throw new Error('请绑定到整个人物关系属性。');
+  const people = world.get_class(self.classId), kinds = world.get_class('关系');
+  const persons = people.instances(), relations = kinds.instances();
+  const byPerson = new Map(persons.map(x => [x.name, x]));
+  const byPersonId = new Map(persons.map(x => [x.id, x]));
+  const byKind = new Map(relations.map(x => [x.name, x]));
+  const byKindId = new Map(relations.map(x => [x.id, x]));
+  const link = (file, name) => `[${name}](${file}#${encodeURIComponent(name)})`;
+  const nameOf = text => {
+    const m = String(text || '').match(/\]\([^#)]+#([^)]*)\)/);
+    if (!m) return null;
+    try { return decodeURIComponent(m[1]); } catch { return null; }
+  };
+  const only = (items, predicate, label) => {
+    const matches = items.filter(predicate);
+    if (matches.length !== 1) throw new Error(`人物关系属性配置缺少唯一的${label}。`);
+    return matches[0];
+  };
+  const personSchema = only(input.schema().children || [], s => s.repeatable && s.valueType === 'Object' && s.keyType === 'Class' && s.classId === people.id, '人物项');
+  const relationSchema = only(personSchema.children || [], s => s.key === '关系' && s.valueType === 'Object', '关系对象');
+  const kindSchema = only(relationSchema.children || [], s => s.repeatable && s.keyType === 'Class' && s.classId === kinds.id && s.valueType === 'Null', '可重复关系项');
+  const storySchema = only(personSchema.children || [], s => s.key === '人物关系小故事' && s.valueType === 'Object', '人物关系小故事');
+
+  const rules = new Map(), inverse = new Map();
+  for (const kind of relations) {
+    const pairs = new Map();
+    try {
+      for (const row of kind.get_member('关系推理').members()) {
+        const second = byKind.get(nameOf(row.name));
+        let result;
+        try {
+          const value = row.to_value();
+          if (value.type === 'Class' && value.classId === kinds.id) result = byKindId.get(value.entityId);
+        } catch {}
+        result ||= byKind.get(nameOf(row.value()));
+        if (!second || !result) continue;
+        if (!pairs.has(second.id)) pairs.set(second.id, new Set());
+        pairs.get(second.id).add(result.id);
+      }
+    } catch {}
+    rules.set(kind.id, pairs);
+    try {
+      const value = kind.get_member('关系反推').to_value();
+      if (value.type === 'Class' && value.classId === kinds.id && byKindId.has(value.entityId)) inverse.set(kind.id, value.entityId);
+    } catch {}
   }
 
-  const peopleClass = world.get_class(self.classId);
-  const relationClass = world.get_class('关系');
-  const people = peopleClass.instances();
-  const relations = relationClass.instances();
-  const peopleByName = new Map(people.map(person => [person.name, person]));
-  const relationByName = new Map(relations.map(relation => [relation.name, relation]));
-  const relationById = new Map(relations.map(relation => [relation.id, relation]));
-
-  function linkedName(text) {
-    const match = String(text || '').match(/\]\([^#)]+#([^)]*)\)/);
-    if (!match) return null;
-    try { return decodeURIComponent(match[1]); } catch { return null; }
-  }
-
-  function rowChildren(row) {
-    try { return row.members(); } catch { return []; }
-  }
-
-  // input contains child field IDs, while its own Class key is on the parent row.
-  // Match IDs instead of matching the relation text, which may repeat on other rows.
-  const inputIds = new Set((input.to_value().members || []).map(member => member.id).filter(Boolean));
-  if (!inputIds.size) {
-    throw new Error('当前关系项缺少子属性 ID；请从人物列表中的实际关系项运行，而非手写测试 input。');
-  }
-  const ownRows = self.get_member('人物关系').members();
-  const matchingRows = ownRows.filter(row => rowChildren(row).some(member => inputIds.has(member.id)));
-  if (matchingRows.length !== 1) {
-    throw new Error('无法唯一定位当前人物关系项；请检查所绑定的属性和测试 input。');
-  }
-  const targetName = linkedName(matchingRows[0].name);
-  const target = targetName && peopleByName.get(targetName);
-  if (!target) throw new Error('当前关系项的键不是有效的人物引用。');
-  if (target.id === self.id) throw new Error('当前人物与关系项的目标人物不能相同。');
-
-  // A relation's 关系推理 rows mean: first relation + row key = row value.
-  // Multiple rules for the same pair are retained.
-  const inference = new Map();
-  for (const relation of relations) {
-    let ruleRows;
-    try { ruleRows = relation.get_member('关系推理').members(); } catch { continue; }
-    const bySecond = new Map();
-    for (const rule of ruleRows) {
-      const second = relationByName.get(linkedName(rule.name));
-      const result = relationByName.get(linkedName(rule.value()));
-      if (!second || !result) continue;
-      if (!bySecond.has(second.id)) bySecond.set(second.id, new Set());
-      bySecond.get(second.id).add(result.id);
-    }
-    inference.set(relation.id, bySecond);
-  }
-
-  const graph = new Map();
-  for (const person of people) {
-    const edges = [];
+  const graph = new Map(persons.map(x => [x.id, new Map()]));
+  const addEdge = (a, b, kind) => {
+    if (!graph.get(a).has(b)) graph.get(a).set(b, new Set());
+    graph.get(a).get(b).add(kind);
+  };
+  for (const person of persons) {
     let rows;
-    try { rows = person.get_member('人物关系').members(); } catch { rows = []; }
+    try { rows = person.get_member('人物关系').to_value().members || []; } catch { continue; }
     for (const row of rows) {
-      const next = peopleByName.get(linkedName(row.name));
-      if (!next) continue;
-      let relationValue;
-      try { relationValue = row.get_member('关系').to_value(); } catch { continue; }
-      if (relationValue.type !== 'Class' || relationValue.classId !== relationClass.id ||
-          !relationById.has(relationValue.entityId)) continue;
-      edges.push({ personId: next.id, relationId: relationValue.entityId });
+      const other = byPerson.get(nameOf(row.key));
+      if (!other || other.id === person.id || row.value.type !== 'Object') continue;
+      const field = (row.value.members || []).find(x => x.schemaId === relationSchema.id || x.key === relationSchema.key);
+      if (field?.value.type !== 'Object') continue;
+      for (const member of field.value.members || []) {
+        const kind = byKind.get(nameOf(member.key));
+        if (!kind) continue;
+        addEdge(person.id, other.id, kind.id);
+        if (inverse.has(kind.id)) addEdge(other.id, person.id, inverse.get(kind.id));
+      }
     }
-    graph.set(person.id, edges);
   }
 
-  // Enumerate simple person paths. A path never revisits a person, so loops such
-  // as 妈妈 -> 儿子 -> 妈妈 terminate. Rule-less paths terminate immediately.
-  const found = new Set();
-  const queue = [{ personId: self.id, relationId: null, visited: new Set([self.id]) }];
-  const MAX_STATES = 25000;
-  for (let head = 0; head < queue.length; head++) {
-    if (head >= MAX_STATES) {
-      throw new Error('人物关系路径超过 25000 个搜索状态；请减少关系回路或拆分关系网。');
-    }
-    const state = queue[head];
-    for (const edge of graph.get(state.personId) || []) {
-      if (state.visited.has(edge.personId)) continue;
-      const nextRelations = state.relationId === null
-        ? [edge.relationId]
-        : [...(inference.get(state.relationId)?.get(edge.relationId) || [])];
-      for (const nextRelation of nextRelations) {
-        if (edge.personId === target.id) {
-          found.add(nextRelation);
-        } else if (inference.get(nextRelation)?.size) {
-          if (queue.length >= MAX_STATES) {
-            throw new Error('人物关系路径超过 25000 个搜索状态；请减少关系回路或拆分关系网。');
-          }
-          queue.push({
-            personId: edge.personId,
-            relationId: nextRelation,
-            visited: new Set([...state.visited, edge.personId])
-          });
+  // 每条路径不重复经过同一人物，防止“妈妈→儿子→妈妈”回路。
+  const found = new Map(), queue = [{person:self.id, kind:null, seen:new Set([self.id])}];
+  const limit = 25000;
+  for (let i = 0; i < queue.length; i++) {
+    const state = queue[i];
+    for (const [other, direct] of graph.get(state.person) || []) {
+      if (state.seen.has(other)) continue;
+      for (const edgeKind of direct) {
+        const derived = state.kind === null ? [edgeKind] : [...(rules.get(state.kind)?.get(edgeKind) || [])];
+        for (const kind of derived) {
+          if (!found.has(other)) found.set(other, new Set());
+          found.get(other).add(kind);
+          if (!rules.get(kind)?.size) continue;
+          if (queue.length >= limit) throw new Error('关系路径超过 25000 个搜索状态，已停止且没有写入部分结果。');
+          queue.push({person:other, kind, seen:new Set([...state.seen, other])});
         }
       }
     }
   }
 
-  return values.object([...found]
-    .map(id => relationById.get(id))
-    .filter(Boolean)
-    .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
-    .map(relation => ({
-      key: `[${relation.name}](关系类型.md#${encodeURIComponent(relation.name)})`,
-      value: values.null()
-    })));
+  // 实时读取也包含此前生成的成员，用来保证重复运行不会重复追加。
+  const existing = new Map();
+  for (const row of self.get_member('人物关系').members()) {
+    const person = byPerson.get(nameOf(row.name));
+    if (!person) continue;
+    if (!existing.has(person.id)) existing.set(person.id, {row, kinds:new Set()});
+    const record = existing.get(person.id);
+    try {
+      for (const member of row.get_member(relationSchema.key).members()) {
+        const kind = byKind.get(nameOf(member.name));
+        if (kind) record.kinds.add(kind.id);
+      }
+    } catch {}
+  }
+  for (const [personId, types] of found) {
+    const record = existing.get(personId);
+    const missing = [...types].filter(id => !record?.kinds.has(id)).map(id => byKindId.get(id));
+    if (!missing.length) continue;
+    missing.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+    if (record) {
+      const list = record.row.get_member(relationSchema.key);
+      for (const kind of missing) list.add(kindSchema.id, values.null(), link('关系类型.md', kind.name));
+    } else {
+      input.add(personSchema.id, values.object([
+        {schemaId:relationSchema.id, key:relationSchema.key, value:values.object(missing.map(kind => ({
+          schemaId:kindSchema.id, key:link('关系类型.md', kind.name), value:values.null()
+        })))},
+        {schemaId:storySchema.id, key:storySchema.key, value:values.object([])}
+      ]), link('人物列表.md', byPersonId.get(personId).name));
+    }
+  }
 }

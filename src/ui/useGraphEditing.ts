@@ -7,8 +7,9 @@ export default function useGraphEditing<G extends EditGraph>(value:G,onChange:(n
   const [selected,setSelected]=useState<string[]>([]),[selectedEdges,setSelectedEdges]=useState<string[]>([]),[revision,setRevision]=useState(0)
   const past=useRef<G[]>([]),future=useRef<G[]>([]),transaction=useRef<G|null>(null),live=useRef({value,onChange,selected,selectedEdges});live.current={value,onChange,selected,selectedEdges}
   const changed=()=>setRevision(n=>n+1)
-  const commit=(next:G)=>{const current=live.current;if(JSON.stringify(next)===JSON.stringify(current.value))return;if(!transaction.current){past.current.push(structuredClone(current.value));if(past.current.length>100)past.current.shift()}future.current=[];live.current={...current,value:next};current.onChange(next);changed()}
+  const commit=(next:G,force=false)=>{const current=live.current;if(!force&&JSON.stringify(next)===JSON.stringify(current.value))return;if(!transaction.current){past.current.push(structuredClone(current.value));if(past.current.length>100)past.current.shift()}future.current=[];live.current={...current,value:next};current.onChange(next);changed()}
   const begin=()=>{transaction.current=structuredClone(live.current.value)}
+  const cancelTransaction=()=>{transaction.current=null;changed()}
   const end=()=>{if(transaction.current&&JSON.stringify(transaction.current)!==JSON.stringify(live.current.value)){past.current.push(transaction.current);if(past.current.length>100)past.current.shift();future.current=[]}transaction.current=null;changed()}
   const undo=()=>{end();const previous=past.current.pop();if(!previous)return;future.current.push(structuredClone(live.current.value));live.current.onChange(previous);live.current.value=previous;setSelected([]);setSelectedEdges([]);changed()}
   const redo=()=>{const next=future.current.pop();if(!next)return;past.current.push(structuredClone(live.current.value));live.current.onChange(next);live.current.value=next;setSelected([]);setSelectedEdges([]);changed()}
@@ -26,5 +27,5 @@ export default function useGraphEditing<G extends EditGraph>(value:G,onChange:(n
   const clear=()=>{setSelected([]);setSelectedEdges([])}
   const commands=useRef({copy,paste,cut,undo,redo,remove});commands.current={copy,paste,cut,undo,redo,remove}
   useEffect(()=>{past.current=[];future.current=[];transaction.current=null;clear();changed()},[kind])
-  return {selected,setSelected,selectedEdges,setSelectedEdges,commit,begin,end,undo,redo,copy,paste,cut,remove,select,clear,canUndo:past.current.length>0,canRedo:future.current.length>0,commands,revision}
+  return {selected,setSelected,selectedEdges,setSelectedEdges,commit,begin,end,cancelTransaction,undo,redo,copy,paste,cut,remove,select,clear,canUndo:past.current.length>0,canRedo:future.current.length>0,commands,revision}
 }

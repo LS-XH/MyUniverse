@@ -1,28 +1,48 @@
-# 文档入口
+# MyUniverse 文档
 
-更新日期：2026-10-09。
+文档按当前对象与职责组织，主模块为 UI、数据结构、功能。先读 [总体设计](../Planning.md)，再进入所属专题；追查需求、修改顺序和测试结果读 [日志](changelog/README.md)。现行规则按仓库代码核对，设计缺口在各专题注明。
 
-| 文档 | 内容与用途 |
-| --- | --- |
-| [Planning](../Planning.md) | 项目目标、需求、当前实现状态和后续范围 |
-| [界面与数据设计原则](design-principles.md) | 为什么采用当前方案；对象、布局、卡片、导航、类型与状态的设计约束 |
-| [界面与交互](ui-interactions.md) | 实际按钮、手势、菜单、动画和页面操作规则 |
-| [结构说明](architecture.md) | 模块职责、数据保存、界面复用、运行与交付边界 |
-| [Markdown 双向编辑](markdown-sync.md) | 序列化、导入、源码编辑、行定位、磁盘刷新和冲突处理 |
-| [模型与智能体](models-and-agents.md) | LLM 配置与发现、ComfyUI 工作流、Agent 显式上下文、工具和调用边界 |
-| [界面操作类型](interface-views.md) | 父文件类型、对象投影、元素绑定、独立布局与平铺文件组织 |
-| [Function](functions.md) | JS/Python/Flow、self/input 类型接口、对象助手、返回值和运行异常 |
+## UI
 
-现行规则以最后确认的需求及上述文档为准。Planning 的原始副本用于历史参考。文档中需区分设计目标、已实现能力、构建验证与实际界面验收，不能将后续目标写成已经交付。
+| 子对象 | 文档 | 内容 |
+| --- | --- | --- |
+| 总设计理念 | [设计原则](ui/design-principles.md) | 同源对象、布局、命令复用、拖动和会话 |
+| 主题与共享控件 | [样式复用](ui/styles.md) | 语义颜色、CSS 家族、Portal、引用、配置卡片和旧类映射 |
+| 应用与创作页面 | [页面交互](ui/pages.md) | 树、实例、Schema、未保存提示、Markdown 双栏、视图和设置 |
+| 工作流编辑 | [工作流 UI](ui/workflow-editor.md) | 停靠区、节点库、变量池、端口、拖放、编辑和性能 |
+| 聊天呈现 | [聊天 UI](ui/chat.md) | 输入、消息、过程、工具组、提议与用户消息操作 |
 
-## 本次整理重点
+## 数据结构
 
-- 成员卡片包含键、值和派生结果，以嵌套边界代替编辑区层级线。
-- 光标交互采用中心放大与轻微倾斜，具体参数、作用域和动画降级有明确说明。
-- 内容驱动宽度，紧凑控件为动态参数留出同排空间。
-- 单击导航、箭头/双击展开、右键动作分开，菜单复用真实工具栏。
-- Markdown 使用独立双栏及连续顶部标题，按钮固定右上角。
-- Function 返回类型、只读呈现和原始 Value 的职责分别说明。
-- 修正早期浮动预览、无展开箭头与强制铺满等已被替代的描述。
+| 子对象 | 文档 | 内容 |
+| --- | --- | --- |
+| 世界与类实例 | [世界对象](data/world.md) | Workspace/World、Schema、类型、身份、默认模板、生成来源 |
+| JSON 保存结构 | [JSON 存储](data/json-storage.md) | 文件布局、真实读写角色、样式/运行元数据及结构示例 |
+| Markdown 保存结构 | [Markdown 格式](data/markdown.md) | 标题、递归成员、引用、重复项、Content、来源注释和解析边界 |
+| 界面投影 | [视图数据](data/views.md) | InterfaceView、current/fixed 路径、GraphStyle 和布局 |
+| 工作流 | [图与类型](data/workflow.md) | 图定义、七型信封、端口引用、消息/图片/能力集合及迁移 |
+| 聊天 | [聊天数据](data/chat.md) | 消息、运行状态、模型协议、提议快照与编辑上下文 |
 
-- [工作流严格类型、Messages/Image 与批量编辑](workflow-types.md)：变量结构、类型成员、执行依赖、兼容迁移及工具上下文。
+## 功能
+
+| 子对象 | 文档 | 内容 |
+| --- | --- | --- |
+| 数据生命周期 | [保存与刷新](features/persistence.md) | 内存草稿、当前/全部提交、显式读取、基线和失败 |
+| Function | [函数设计](features/functions.md) | void/add、类型化参数、绑定作用域、所有权、重算、JS/Python/Flow |
+| Tool | [脚本与工具](features/tools.md) | 自由参数、事务、HTTP/JS、取消、MCP 内部适配 |
+| 官方工具 | [工具与建议](features/official-tools.md) | 九项调用、查询、新增/修改提议、批量采纳及回退 |
+| 界面操作 | [人物关系网与地图](features/interface-views.md) | 人物专用关系、个人聚焦、过滤、源数据写回和地图 |
+| 工作流运行 | [执行设计](features/workflow-execution.md) | 依赖求值、循环、惰性条件、观察、取消与记忆 |
+| 模型能力 | [模型与 Agent](features/models-and-agents.md) | LLM、ToolCalls、子 Agent、模板和 ComfyUI |
+| 聊天运行 | [聊天功能](features/chat.md) | SSE、发起会话定位、协议、重发、提议与持久化 |
+| API | [接口使用](features/api.md) | 世界门面、脚本入口、模型/ComfyUI 请求和桌面桥 |
+
+## 实现与维护
+
+- [架构与代码入口](architecture.md)：分层、调用链和执行边界。
+- [开发与验证](development.md)：命令、交付、测试夹具、验收方法和未实现能力。
+- [文档维护规则](documentation-guide.md)：主题归属、当前规范与过程记录的分工。
+- [修改日志](changelog/README.md)：按日期记录工作，保存历次原文。
+- [本次整理与原文索引](changelog/documentation-reorganization.md)：旧文件去向、拆分/合并、核对入口及原文哈希。
+
+格式定义放数据模块，交互表现放 UI，执行行为与接口放功能。一个规则只在主负责文档完整维护，其他位置以摘要和链接引用。历史规划副本、旧样式盘点、聊天顺序与验收数字仅供日志追溯。

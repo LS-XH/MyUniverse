@@ -55,11 +55,25 @@ flowchart LR
 
 变量声明使用初始 JSON；运行内复制变量，按世界 ID 保存独立记忆，无世界时使用 global。成功才提交变量，失败不提交本次修改。外部模型请求、工具调用和绘图已经产生的效果无法回滚。需要执行顺序时连接 `after` 依赖，不能依赖画布位置或数组顺序。
 
-世界对象节点通过稳定类/实例/成员 ID 读取当前运行快照，支持 Markdown、原生值、程序 TypedValue 输出。Function 节点复用现有执行器；v2 传入所选实例 self 和类型化 input，已有 TypedValue 保持类型，普通输入转换为 Text。程序类型不等同于 JS 原生对象，详见 [Function](functions.md)。
+世界对象节点通过稳定类/实例/成员 ID 读取主程序当前世界，支持 Markdown、原生值、程序 TypedValue 输出。Function 节点复用现有执行器；v2 传入所选实例 self 和类型化 input，已有 TypedValue 保持类型，普通输入转换为 Text。程序类型不等同于 JS 原生对象，详见 [Function](functions.md)。
 
 ## Tool 与聊天
 
-插件的工具集合支持 HTTP Tool 注册、嵌套文件夹、URL、GET/POST、密钥、请求体模式、启停和删除。Agent Tool 节点选择已注册工具，也可配置内联请求。删除/停用工具后引用会报错；当前工具为 HTTP JSON 调用，不提供任意本地命令执行。
+### 自带 ToolUse 示例（2026-10-10）
+
+最新示例为基础 LLM → 合并 ToolUse → ToolCalls → 合并工具返回 → 第二次基础 LLM → 显式保存 Messages；系统提示词在 Messages 初始值中维护，Tools 使用 TOOLS 端口。完整数据规则见 [工作流结构与交互调整](workflow-structure-update.md)；已保存的旧图保留兼容自动行为。
+
+卡片标题属于节点类型，不提供实例自定义命名。读取与保存历史均使用固定的“Messages 变量”名称，以 value 连线区分读写；绑定变量名在卡片内显示。类型方法和属性使用固定的“类型 · 成员名称”。旧示例或导入图中的自定义 title 不用于画布、端口标签、运行记录和错误名称；ComfyUI 使用节点目录的类型显示名，目录未加载时显示 classType。序列化 title 暂保留以兼容旧文件。
+
+Agent 页提供“新建 ToolUse 示例”，创建独立可编辑的“ToolUse 示例 · 查询世界类名”，不覆盖已有画布。自动为两张 LLM 选择首个启用且已填写模型标识的模型；没有可用模型时手动为两张卡片选择。创建后打开配置，选择调用世界，再打开“运行”，使用预填的“请调用工具，列出当前世界的所有类名，并根据工具结果回答。”输入。需要支持工具调用的模型服务。
+
+示例将 Tools 类型的“获取 Tool”卡片绑定官方 `builtin:list_classes`，同时接入第一张 LLM 的 tools:TOOLS 与 ToolCalls 的 tools:TOOLS。第一张模型发起 universe_list_classes，ToolCalls 执行并回传结果，第二张模型不接 Tools、只根据完整消息生成回复。示例展示一次显式工具交流，不修改世界对象。模型是否发起调用由服务响应决定；原自动 ToolCalls 卡片仍保留最多 16 轮的兼容行为。
+
+Messages 变量 toolUseHistory 管理系统词与历史，按完整用户轮次保留最近 8 轮，追加本次输入后进入基础 LLM 的 messages。基础 LLM 输出仅包含本次 assistant；ToolCalls 输出 role=tool 片段，分别显式合并回完整历史。最终合并结果连接同名 Messages 变量的 value，通过返回节点 after 保证保存已执行。“最后一条文本”属性负责界面回复。信封为 `{type,value}`，按世界隔离，失败不提交本次记忆；可在变量池、配置或运行记录中查看完整交流。
+
+验证使用模拟模型响应执行真实官方查询工具，覆盖 Tool 输入限定、ToolUse/返回配对、跨轮上下文以及失败不修改已有记忆；真实模型服务需在用户配置后运行验收。
+
+插件的工具集合支持 HTTP Tool 注册、嵌套文件夹、URL、GET/POST、密钥、请求体模式、启停和删除。Agent Tool 节点选择已注册工具，也可配置内联请求。删除/停用工具后引用会报错；另支持主程序 JS Tool、自由参数 Schema、MCP annotations、普通返回值及共用世界写入接口。模型配置勾选 Tool 后，聊天和 LLM 节点自动执行工具交流，最多 16 轮；详见 [主程序脚本接口与 Tool](script-runtime-and-tools.md)。
 
 聊天输入区可选择启用的 LLM 或 Agent。发送与等待由 AppRoot 管理，切页、切会话后仍把结果写回原始世界/会话，避免回复进入新页面。请求失败保留用户消息并显示错误；支持停止等待。Agent 回复暂按文本/JSON显示，SD 页提供图片展示。Agent 历史由工作流变量控制，不自动使用聊天消息作为隐藏记忆。
 

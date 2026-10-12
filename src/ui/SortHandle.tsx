@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { GripVertical } from 'lucide-react'
 import { sortOffsets } from '../model/sortGeometry'
+import { portalTheme } from './portalTheme'
+import { preserveDragAppearance } from './dragAppearance'
 
 export function reorder<T extends {id:string}>(items:T[],from:string,to:string,after:boolean):T[] {
   if(from===to||!items.some(item=>item.id===from)||!items.some(item=>item.id===to))return items
@@ -15,7 +17,7 @@ export default function SortHandle({id,onMove}:{id:string;onMove:(from:string,to
   callback.current=onMove
   const [dragging,setDragging]=useState(false)
   useEffect(()=>()=>cleanup.current?.(),[])
-  return <button type="button" className={`schema-grip sort-handle ${dragging?'is-dragging':''}`} title="拖动调整顺序；方向键上下移动" aria-label="调整顺序" onKeyDown={e=>{
+  return <button type="button" className={`schema-grip ui-drag-handle--schema sort-handle ui-drag-handle--sort ${dragging?'is-dragging':''} ui-surface ui-drag-handle`} title="拖动调整顺序；方向键上下移动" aria-label="调整顺序" onKeyDown={e=>{
     if(e.key!=='ArrowUp'&&e.key!=='ArrowDown')return
     e.preventDefault()
     const row=e.currentTarget.closest<HTMLElement>('[data-sort-id]'),siblings=Array.from(row?.parentElement?.children||[]).filter(el=>el.hasAttribute('data-sort-id'))
@@ -34,16 +36,16 @@ export default function SortHandle({id,onMove}:{id:string;onMove:(from:string,to
     let active=false,target:HTMLElement|null=null,after=false,frame=0,x=start.x,y=start.y,slot=from,ghost:HTMLElement|null=null,placeholder:HTMLElement|null=null
     const createPreview=()=>{
       ghost=row.cloneNode(true) as HTMLElement
-      ghost.classList.add('sort-ghost');ghost.removeAttribute('data-sort-id');ghost.removeAttribute('id');ghost.setAttribute('aria-hidden','true');ghost.inert=true
+      preserveDragAppearance(row,ghost)
+      ghost.classList.add('sort-ghost','ui-drag-preview--sort','ui-surface','ui-drag-preview');ghost.removeAttribute('data-sort-id');ghost.removeAttribute('id');ghost.setAttribute('aria-hidden','true');ghost.inert=true
       // cloneNode does not reliably copy live textarea/select values.
       const originals=row.querySelectorAll<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>('input,textarea,select')
       ghost.querySelectorAll<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>('input,textarea,select').forEach((el,i)=>{el.value=originals[i].value;if(el instanceof HTMLInputElement&&originals[i] instanceof HTMLInputElement)el.checked=(originals[i] as HTMLInputElement).checked})
       ghost.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'))
       ghost.querySelectorAll('[data-sort-id]').forEach(el=>el.removeAttribute('data-sort-id'))
-      const theme=getComputedStyle(row.closest('.app-shell')||row)
-      for(let i=0;i<theme.length;i++){const key=theme[i];if(key.startsWith('--'))ghost.style.setProperty(key,theme.getPropertyValue(key))}
+      for(const [key,value] of Object.entries(portalTheme(row)))ghost.style.setProperty(key,String(value))
       Object.assign(ghost.style,{width:`${rect.width}px`,height:`${rect.height}px`,left:'0px',top:'0px'})
-      placeholder=document.createElement('div');placeholder.className='sort-placeholder';placeholder.setAttribute('aria-hidden','true')
+      placeholder=document.createElement('div');placeholder.className='sort-placeholder ui-drag-preview--sort-placeholder ui-surface ui-drag-preview';placeholder.setAttribute('aria-hidden','true')
       Object.assign(placeholder.style,{position:'absolute',height:`${rect.height}px`,width:`${rect.width}px`,pointerEvents:'none'})
       // Attach the slot to its list so it shares its theme and scroll position.
       parent.style.position ||= 'relative';parent.appendChild(placeholder)

@@ -1,5 +1,5 @@
 ﻿{
-    "status":  "pending",
-    "source":  "E:\\Program\\React\\MyUniverse\\src-tauri\\target-next\\release\\my-universe.exe",
-    "target":  "E:\\Program\\React\\MyUniverse\\src-tauri\\target\\release\\my-universe.exe"
+    "updatedAt":  "2026-10-12T11:01:19.6150256+08:00",
+    "status":  "installed",
+    "sha256":  "35322BAC65A7CD7A08CA2D11A8D4CC5E4C8DA8BE344A912DF3DDFE6CB65D6DA7"
 }

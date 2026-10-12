@@ -1,3 +1,4 @@
-import {useState,type ReactNode} from 'react'
+import {createContext,useContext,useEffect,useState,type ReactNode} from 'react'
 import {Folder,ChevronDown,ChevronRight} from 'lucide-react'
-export default function LibraryFolder({title,icon,children}:{title:string;icon?:ReactNode;children:ReactNode}){const [open,setOpen]=useState(true);return <div className="library-tree-folder"><button className="flow-library-folder" aria-expanded={open} onClick={()=>setOpen(!open)}>{icon||<Folder size={16}/>}<span>{title}</span>{open?<ChevronDown size={14}/>:<ChevronRight size={14}/>}</button>{open&&<div className="workflow-library-branch">{children}</div>}</div>}
+export const LibraryExpansionContext=createContext({open:true,revision:0})
+export default function LibraryFolder({title,icon,children}:{title:string;icon?:ReactNode;children:ReactNode}){const expansion=useContext(LibraryExpansionContext),[open,setOpen]=useState(expansion.open);useEffect(()=>setOpen(expansion.open),[expansion]);return <div className="library-tree-folder"><button className="flow-library-folder ui-tree-row--folder ui-surface ui-tree-row" aria-expanded={open} onClick={()=>setOpen(!open)}>{icon||<Folder size={16}/>}<span>{title}</span>{open?<ChevronDown size={14}/>:<ChevronRight size={14}/>}</button>{open&&<div className="workflow-library-branch ui-tree-branch">{children}</div>}</div>}

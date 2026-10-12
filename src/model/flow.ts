@@ -21,7 +21,7 @@ export function validateFlow(graph:FlowGraph,complete=true):void {
   if(complete&&!graph.edges.some(e=>e.to===output.id))throw new Error('请将输出连接到 return')
 }
 /** Generates ordinary JS: nodes remain editable while loops/branches live inside code blocks. */
-export function compileFlow(graph:FlowGraph,typed=false):string {
+export function compileFlow(graph:FlowGraph,typed=false,voidMode=false):string {
   validateFlow(graph)
   const output=graph.nodes.find(n=>n.type==='return')!,lines:string[]=[]
   for(const node of graph.nodes){
@@ -41,7 +41,7 @@ export function compileFlow(graph:FlowGraph,typed=false):string {
     }
     lines.push(`case ${JSON.stringify(node.id)}: { const inputs = Object.fromEntries([${inputs}]); ${body} }`)
   }
-  return `async function transform(${typed?'self, input':'input, world'}) {\n  const cache = new Map();\n  const number = value => {if(value && typeof value.value === 'function')value=value.value();else if(value && typeof value === 'object' && value.type)value=value.value;if(String(value).trim()==='' || !Number.isFinite(Number(value)))throw new Error('算术输入必须是有效数字');return Number(value);};\n  async function evaluate(id) {\n    if(cache.has(id))return cache.get(id);\n    const task=(async()=>{switch(id) {\n${lines.map(line=>'      '+line).join('\n')}\n      default: throw new Error('卡片不存在');\n    }})();\n    cache.set(id,task);\n    return task;\n  }\n  const result = await evaluate(${JSON.stringify(output.id)});\n  if(result === undefined)throw new Error('代码块没有返回值');\n  return ${typed?'values.from(result && typeof result.to_value === "function" ? result.to_value() : result)':"typeof result === 'string' ? result : JSON.stringify(result)"};\n}\n`
+  return `async function transform(${typed?'self, input':'input, world'}) {\n  const cache = new Map();\n  const number = value => {if(value && typeof value.value === 'function')value=value.value();else if(value && typeof value === 'object' && value.type)value=value.value;if(String(value).trim()==='' || !Number.isFinite(Number(value)))throw new Error('算术输入必须是有效数字');return Number(value);};\n  async function evaluate(id) {\n    if(cache.has(id))return cache.get(id);\n    const task=(async()=>{switch(id) {\n${lines.map(line=>'      '+line).join('\n')}\n      default: throw new Error('卡片不存在');\n    }})();\n    cache.set(id,task);\n    return task;\n  }\n  const result = await evaluate(${JSON.stringify(output.id)});\n  ${voidMode?'return;':`if(result === undefined)throw new Error('代码块没有返回值');\n  return ${typed?'values.from(result && typeof result.to_value === "function" ? result.to_value() : result)':"typeof result === 'string' ? result : JSON.stringify(result)"};`}\n}\n`
 }
 export function connectFlow(graph:FlowGraph,from:string,to:string,port:string):FlowGraph {
   const candidate={...graph,edges:[...graph.edges.filter(e=>e.to!==to||e.port!==port),{id:uid(),from,to,port}]}

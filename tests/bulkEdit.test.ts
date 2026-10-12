@@ -31,3 +31,12 @@ test('ambiguous repeatable or missing members are excluded from bulk editors',()
   people[1].fields[0].children=[]
   assert.deepEqual(commonFields(people,schemas),[])
 })
+
+
+test('generated members and their descendants cannot be bulk edited',()=>{
+ const schema={id:'s',key:'值',keyType:'Const' as const,valueType:'Text' as const}
+ const origin={functionId:'fn',name:'生成',bindingFieldId:'root'}
+ const entities=[{id:'a',name:'甲',fields:[{id:'generated',schemaId:'s',key:'值',value:'保留',children:[],functionOrigin:origin}]}]
+ assert.deepEqual(commonFields(entities,[schema]),[])
+ assert.equal(patchCommonFields(entities,['a'],['generated'],{value:'修改'})[0].fields[0].value,'保留')
+})

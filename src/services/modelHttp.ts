@@ -1,6 +1,35 @@
-import { invoke, isTauri } from '@tauri-apps/api/core'
+import { Channel, invoke, isTauri } from '@tauri-apps/api/core'
+import {SSEDecoder} from './sse'
 
 export interface HttpRequest {url:string;method?:'GET'|'POST';apiKey?:string;body?:unknown;timeoutSeconds?:number;signal?:AbortSignal}
+export async function modelStream({url,apiKey='',body,timeoutSeconds=120,signal}:HttpRequest,onData:(data:string)=>void|Promise<void>):Promise<void> {
+ const parsed=new URL(url)
+ if(!['http:','https:'].includes(parsed.protocol)||parsed.username||parsed.password)throw new Error('接口需要 http(s) URL，不允许在 URL 中包含密钥')
+ if(signal?.aborted)throw new DOMException('已取消','AbortError')
+ const decoder=new SSEDecoder(),dispatch=async(bytes:Uint8Array)=>{for(const data of decoder.push(bytes))await onData(data)}
+ if(isTauri()){
+  const requestId=crypto.randomUUID(),channel=new Channel<{kind:'ready'|'chunk'|'complete'|'error';data?:number[];error?:string}>()
+  let queue=Promise.resolve(),failure:unknown,completed=false,finish!:()=>void
+  const terminal=new Promise<void>(resolve=>{finish=resolve})
+  channel.onmessage=event=>{queue=queue.then(async()=>{if(signal?.aborted){void invoke('cancel_model_stream',{requestId});return}if(event.kind==='chunk')await dispatch(new Uint8Array(event.data||[]));else if(event.kind==='complete')completed=true;else if(event.kind==='error')throw new Error(event.error||'SSE 连接失败')}).catch(error=>{failure??=error;void invoke('cancel_model_stream',{requestId})}).finally(()=>{if(event.kind==='complete'||event.kind==='error'||failure)finish()})}
+  const abort=()=>{void invoke('cancel_model_stream',{requestId})}
+  signal?.addEventListener('abort',abort,{once:true})
+  try{let transportError:unknown;try{await invoke('model_stream',{url,apiKey,body,timeoutSeconds,requestId,channel})}catch(error){transportError=error}if(!transportError)await terminal;await queue;if(signal?.aborted)throw new DOMException('已取消','AbortError');if(failure)throw failure;if(transportError)throw transportError;if(!completed)throw new Error('SSE 连接异常结束')}
+  finally{signal?.removeEventListener('abort',abort);channel.onmessage=()=>{}}
+ }else{
+  const controller=new AbortController(),abort=()=>controller.abort(),timer=setTimeout(abort,timeoutSeconds*1000)
+  signal?.addEventListener('abort',abort,{once:true})
+  try{
+   const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',Accept:'text/event-stream',...(apiKey?{Authorization:`Bearer ${apiKey}`}:{})},body:JSON.stringify(body),signal:controller.signal,redirect:'error'})
+   if(!response.ok)throw new Error(`HTTP ${response.status}\n${(await response.text()).slice(0,4096)}`)
+   if(!response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')||!response.body)throw new Error('服务未返回 SSE 流')
+   const reader=response.body.getReader();let size=0
+   try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>32000000)throw new Error('模型响应超过大小限制');await dispatch(value)}}finally{await reader.cancel().catch(()=>{});reader.releaseLock()}
+  }catch(error){if(signal?.aborted)throw new DOMException('已取消','AbortError');if(controller.signal.aborted)throw new Error('模型 SSE 请求超时');throw error}
+  finally{clearTimeout(timer);signal?.removeEventListener('abort',abort)}
+ }
+ for(const data of decoder.finish())await onData(data)
+}
 export async function modelRequest<T=any>({url,method='GET',apiKey='',body,timeoutSeconds=60,signal}:HttpRequest):Promise<T> {
   const parsed=new URL(url)
   if(!['http:','https:'].includes(parsed.protocol)||parsed.username||parsed.password)throw new Error('接口需要 http(s) URL，不允许在 URL 中包含密钥')

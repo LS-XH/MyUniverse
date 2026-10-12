@@ -1,5 +1,6 @@
+import { fieldPath, originalFields } from './functionAppend'
 import { classLink } from './markdown'
-import { functionReferenceIdentity, referenceBase } from './functions'
+import { referenceBase } from './functions'
 import { ClassDocument, Entity, FieldSchema, FieldValue, FunctionContext, FunctionType, TypedMember, TypedValue, World } from './types'
 
 export function fieldTypedValue(field:FieldValue,schema:FieldSchema,world?:World):TypedValue {
@@ -10,8 +11,6 @@ export function fieldTypedValue(field:FieldValue,schema:FieldSchema,world?:World
     const entity=doc?.entities.find(e=>e.name===name)
     if(!field.value)return {type:'Null',value:null}
     if(!doc||!entity)throw new Error(`对象引用“${field.value}”已失效`)
-    const [functionId,fieldId]=functionReferenceIdentity(field.value).split('/')
-    if(functionId&&fieldId){const visit=(fields:FieldValue[]):TypedValue|undefined=>{for(const f of fields){if(f.id===fieldId){const result=f.functionResults?.find(r=>r.functionId===functionId&&!r.error);if(result)return result.typedValue||{type:'Text',value:result.value}}const child=visit(f.children);if(child)return child}};const typed=visit(entity.fields);if(typed)return typed;throw new Error('引用的函数返回值尚未生成或运行失败')}
     return {type:'Class',classId:doc.id,entityId:entity.id}
   }
   if(schema.valueType==='Null')return {type:'Null',value:null}
@@ -25,7 +24,7 @@ export function fieldTypedValue(field:FieldValue,schema:FieldSchema,world?:World
   return {type:schema.valueType,value:field.value}
 }
 export function functionContext(world:World,doc:ClassDocument,entity:Entity,field:FieldValue,schema:FieldSchema):FunctionContext {
-  return {self:{classId:doc.id,entityId:entity.id},input:fieldTypedValue(field,schema,world)}
+  return {self:{classId:doc.id,entityId:entity.id},input:fieldTypedValue({...field,children:originalFields(field.children)},schema,world),bindingPath:fieldPath(entity.fields,field.id)}
 }
 
 /** Validate the tagged representation, never guess a native object's meaning. */
@@ -96,14 +95,20 @@ export function createFunctionApi(world:any,context:FunctionContext,contract:Fun
     object:(members:any,classId?:string)=>({type:'Object',members:Array.isArray(members)?members:Object.entries(members).map(([key,value])=>({key,value})),...(classId?{classId}:{})}),
     from:(value:any)=>value&&typeof value==='object'&&value.type?value:contract.type==='Object'?{type:'Object',members:value,classId:contract.classId}:contract.type==='Class'?{type:'Class',...value,classId:contract.classId||value.classId}:{type:contract.type,value:contract.type==='Null'?null:value}
   }
-  const wrap=(data:TypedValue):any=>({type:data.type,classId:data.classId,entityId:data.entityId,
+  const wrap=(data:TypedValue,writer?:any):any=>({type:data.type,classId:data.classId,entityId:data.entityId,
+    schema:()=>{if(!writer)throw new Error('没有绑定属性');return writer.schema()},
+    add:(...args:any[])=>{if(!writer)throw new Error('没有绑定属性，不能添加');return writer.add(...args)},
+    append_repeatable:(selector:string,value:TypedValue,key?:string)=>{if(!writer)throw new Error('没有绑定属性，不能追加');return writer.append_repeatable(selector,value,key)},
+    append_self:(value:TypedValue,key?:string)=>{if(!writer)throw new Error('没有绑定属性，不能追加');return writer.append_self(value,key)},
     value:()=>data.type==='Object'?data.members:data.type==='Class'?{classId:data.classId,entityId:data.entityId}:data.value,
     to_value:()=>JSON.parse(JSON.stringify(data)),
     instance:()=>{if(data.type!=='Class')throw new Error('只有 Class 值可读取实例');return world.get_class(data.classId).get_instance(data.entityId)},
-    members:()=>{if(data.type!=='Object')throw new Error('只有 Object 值具有子成员');return data.members!.map(m=>({id:m.id,schemaId:m.schemaId,key:m.key,...wrap(m.value)}))},
-    get_member:(key:string)=>{const matches=data.members?.filter(m=>m.id===key||m.schemaId===key||m.key===key)||[];if(matches.length!==1)throw new Error('属性不存在或重名，请使用 ID: '+key);return wrap(matches[0].value)},
+    members:()=>{if(data.type!=='Object')throw new Error('只有 Object 值具有子成员');return data.members!.map(m=>({id:m.id,schemaId:m.schemaId,key:m.key,...wrap(m.value,writer&&m.id?writer.get_member(m.id):undefined)}))},
+    get_member:(key:string)=>{const matches=data.members?.filter(m=>m.id===key||m.schemaId===key||m.key===key)||[];if(matches.length!==1)throw new Error('属性不存在或重名，请使用 ID: '+key);return wrap(matches[0].value,writer&&matches[0].id?writer.get_member(matches[0].id):undefined)},
     markdown:():string=>data.type==='Object'?data.members!.map(m=>'### '+m.key+'\n\n'+wrap(m.value).markdown()).join('\n\n'):data.type==='Null'?'':data.type==='Class'?world.get_class(data.classId).get_instance(data.entityId).markdown():String(data.value)
   })
   const self=world.get_class(context.self.classId).get_instance(context.self.entityId)
-  return {self:{...self,type:'Class',classId:context.self.classId,schema:()=>world.get_class(context.self.classId).schema(),to_value:()=>values.class(context.self.classId,context.self.entityId)},input:wrap(context.input),values}
+  const lazyWriter=(resolve:()=>any):any=>({add:(...args:any[])=>resolve().add(...args),schema:()=>resolve().schema(),get_member:(id:string)=>lazyWriter(()=>resolve().get_member(id)),append_repeatable:(...args:any[])=>{const member=resolve();if(!member.append_repeatable)throw new Error('当前运行环境只允许读取');return member.append_repeatable(...args)},append_self:(...args:any[])=>{const member=resolve();if(!member.append_self)throw new Error('当前运行环境只允许读取');return member.append_self(...args)}})
+  const binding=context.bindingPath?.length?lazyWriter(()=>{let member=self;for(const id of context.bindingPath!)member=member.get_member(id);return member}):undefined
+  return {self:{...self,type:'Class',classId:context.self.classId,schema:()=>world.get_class(context.self.classId).schema(),to_value:()=>values.class(context.self.classId,context.self.entityId)},input:wrap(context.input,binding),values}
 }

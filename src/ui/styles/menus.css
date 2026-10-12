@@ -1,0 +1,50 @@
+/* Shared menus family and its visual variants. */
+:where(.ui-menu-item) {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  --ui-bg: transparent;
+  --ui-fg: var(--text);
+}
+:where(.ui-menu--themed) {
+  --ui-bg: var(--panel);
+}
+:where(.ui-menu--text) {
+  --ui-fg: var(--text);
+}
+.ui-menu--picker {
+  --ui-radius: var(--ui-radius-9);
+  --ui-shadow: 0 12px 32px var(--ui-shadow-8);
+}
+.ui-menu--color {
+  --ui-radius: var(--ui-radius-12);
+  --ui-shadow: 0 18px 40px var(--ui-shadow-6);
+}
+.ui-menu--model {
+  --ui-radius: var(--ui-radius-12);
+  --ui-shadow: 0 10px 35px var(--ui-shadow-4);
+  animation: model-menu-in var(--ui-duration-160) ease-out;
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-menu--model {
+    animation: none;
+  }
+  
+}
+.ui-menu--completion {
+  --ui-shadow: 0 8px 28px var(--ui-shadow-5);
+  --ui-radius: var(--ui-radius-8);
+}
+.ui-menu--object {
+  --ui-radius: var(--ui-radius-10);
+  --ui-shadow: 0 10px 30px var(--ui-shadow-5);
+}
+.ui-menu--type {
+  --ui-radius: var(--ui-radius-9);
+  --ui-shadow: 0 8px 24px var(--ui-shadow-4);
+}
+.ui-menu--workflow {
+  --ui-radius: var(--ui-radius-9);
+  --ui-shadow: 0 6px 24px color-mix(in srgb,var(--border) 60%,transparent);
+}

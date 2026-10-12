@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { MoreHorizontal, ExternalLink, Trash2, Plus, FileUp, Download, PanelRight, PencilLine } from 'lucide-react'
+import { Save, RefreshCw, MoreHorizontal, ExternalLink, Trash2, Plus, FileUp, Download, PanelRight, PencilLine } from 'lucide-react'
 
 function ActionIcon({button}:{button:HTMLButtonElement}) {
   const slot=useRef<HTMLSpanElement>(null),source=button.querySelector('svg')
@@ -26,14 +26,14 @@ export default function SidebarActions({position,revision,onClose,target,names=[
     flushSync(()=>target.click())
     if(name==='打开')return
     requestAnimationFrame(()=>requestAnimationFrame(()=>{
-      const controls=Array.from(document.querySelectorAll<HTMLButtonElement>('.page-session button,.topbar .markdown-toggle'))
+      const controls=Array.from(document.querySelectorAll<HTMLButtonElement>('.page-session button,.topbar .markdown-toggle,.topbar-page-actions button'))
       const action=controls.find(button=>[button.textContent?.trim(),button.title,button.getAttribute('aria-label')].some(label=>label===name||(['Markdown 预览','关系文字'].includes(name)&&label?.includes(name))))
       if(action&&!action.disabled)action.click()
     }))
   }
-  const contextualIcon=(name:string)=>name==='打开'?<ExternalLink size={16}/>:name.includes('删除')?<Trash2 size={16}/>:name.includes('导入')?<FileUp size={16}/>:name.includes('导出')?<Download size={16}/>:name.includes('预览')?<PanelRight size={16}/>:name.includes('重命名')?<PencilLine size={16}/>:<Plus size={16}/>
+  const contextualIcon=(name:string)=>name.includes('保存')?<Save size={16}/>:name.includes('刷新')?<RefreshCw size={16}/>:name==='打开'?<ExternalLink size={16}/>:name.includes('删除')?<Trash2 size={16}/>:name.includes('导入')?<FileUp size={16}/>:name.includes('导出')?<Download size={16}/>:name.includes('预览')?<PanelRight size={16}/>:name.includes('重命名')?<PencilLine size={16}/>:<Plus size={16}/>
   if(!position)return null
-  return <div className="sidebar-object-menu" role="menu" aria-label="对象操作" tabIndex={-1} ref={menu} style={{left:Math.min(position.x,window.innerWidth-240),top:Math.max(8,Math.min(position.y,window.innerHeight- Math.min(420,actions.length*38+44)))}}>
-    <strong>{target?.querySelector('span')?.textContent||'页面操作'}</strong>{target?['打开',...names].map(name=><button role="menuitem" className={name.includes('删除')?'danger':''} key={name} onClick={()=>invoke(name)}><span className="sidebar-action-icon">{contextualIcon(name)}</span><span className="sidebar-action-label">{name}</span></button>):actions.length?actions.map((button,index)=><button role="menuitem" className={button.classList.contains('danger')?'danger':''} key={index} disabled={button.disabled} onClick={()=>{onClose();button.click()}}><ActionIcon button={button}/><span className="sidebar-action-label">{button.getAttribute('aria-label')||button.textContent?.trim()||button.title||'操作'}</span>{button.hasAttribute('aria-pressed')&&<small>{button.getAttribute('aria-pressed')==='true'?'已开启':'已关闭'}</small>}</button>):<span className="muted">此页面暂无快捷操作</span>}
+  return <div className="sidebar-object-menu ui-menu--object ui-surface ui-menu ui-menu--themed ui-menu--text ui-surface--bordered" role="menu" aria-label="对象操作" tabIndex={-1} ref={menu} style={{left:Math.min(position.x,window.innerWidth-240),top:Math.max(8,Math.min(position.y,window.innerHeight- Math.min(420,actions.length*38+44)))}}>
+    <strong>{target?.querySelector('span')?.textContent||'页面操作'}</strong>{target?['打开',...names].map(name=><button role="menuitem" className={`${name.includes('删除')?'danger':''} ui-surface ui-button ui-menu-item`} key={name} onClick={()=>invoke(name)}><span className="sidebar-action-icon">{contextualIcon(name)}</span><span className="sidebar-action-label">{name}</span></button>):actions.length?actions.map((button,index)=><button role="menuitem" className={`${button.classList.contains('danger')?'danger':''} ui-surface ui-button ui-menu-item`} key={index} disabled={button.disabled} onClick={()=>{onClose();button.click()}}><ActionIcon button={button}/><span className="sidebar-action-label">{button.getAttribute('aria-label')||button.textContent?.trim()||button.title||'操作'}</span>{button.hasAttribute('aria-pressed')&&<small>{button.getAttribute('aria-pressed')==='true'?'已开启':'已关闭'}</small>}</button>):<span className="muted">此页面暂无快捷操作</span>}
   </div>
 }

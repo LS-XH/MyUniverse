@@ -1,6 +1,7 @@
 use serde_json::Value;
 mod functions;
 mod model_http;
+mod model_stream;
 mod workflow_ws;
 use std::{collections::HashMap, fs, path::{Path, PathBuf}};
 
@@ -90,42 +91,35 @@ fn read_document_files(requests: HashMap<String, Vec<String>>) -> Result<FileSna
     }
     Ok(result)
 }
-fn verify_expected(directory: &Path, name: &str, expected: &Option<String>) -> Result<(), String> {
-    let path=directory.join(safe_component(name)?);
-    let actual=if path.exists() { Some(fs::read_to_string(path).map_err(|e| e.to_string())?) } else { None };
-    if &actual != expected { return Err("MARKDOWN_CHANGED".into()); }
-    Ok(())
-}
 #[tauri::command]
-fn save_workspace(workspace: Value, files: HashMap<String, HashMap<String,String>>, expected: FileSnapshot) -> Result<(), String> {
-    save_workspace_at(&user_dir()?, workspace, files, expected)
-}
-#[tauri::command]
-async fn run_function(language:String,code:String,input:String,world:Option<Value>,api:Option<String>,context:Option<Value>,runtime_api:Option<String>,contract:Option<Value>)->Result<String,String> {
-    let root=user_dir()?;
-    tauri::async_runtime::spawn_blocking(move||functions::execute_with_context(&root,&language,&code,&input,&world.unwrap_or(serde_json::json!({"classes":[]})),&api.unwrap_or_default(),&context.unwrap_or(Value::Null),&runtime_api.unwrap_or_default(),&contract.unwrap_or(Value::Null))).await.map_err(|e|e.to_string())?
-}
-fn save_workspace_at(root: &Path, workspace: Value, files: HashMap<String, HashMap<String,String>>, expected: FileSnapshot) -> Result<(), String> {
-    fs::create_dir_all(root).map_err(|e| e.to_string())?;
-    // Compare the contents read by the UI before writing anything. An external
-    // editor can change a file after the read; the caller then reloads and retries.
-    for (world_id, entries) in &files {
-        let directory=root.join("worlds").join(safe_component(world_id)?);
-        for name in entries.keys().filter(|name| name.ends_with(".md") || name.ends_with(".view.json")) {
-            let original=expected.get(world_id).and_then(|entries| entries.get(name)).ok_or("Missing Markdown baseline")?;
-            verify_expected(&directory,name,original)?;
+fn save_workspace(workspace: Value, files: HashMap<String, HashMap<String,String>>, json_only:Option<bool>) -> Result<(), String> {
+    if json_only.unwrap_or(false) {
+        let root=user_dir()?;
+        for (world_id,entries) in files {
+            let directory=root.join("worlds").join(safe_component(&world_id)?);
+            fs::create_dir_all(&directory).map_err(|e|e.to_string())?;
+            for (name,text) in entries {
+                if !name.ends_with(".json") {return Err("Configuration save only accepts JSON".into());}
+                write_atomic(&directory.join(safe_component(&name)?),&text)?;
+            }
         }
+        return write_atomic(&root.join("workspace.json"),&serde_json::to_string_pretty(&workspace).map_err(|e|e.to_string())?);
     }
+    save_workspace_at(&user_dir()?, workspace, files, HashMap::new())
+}
+#[tauri::command]
+async fn run_function(language:String,code:String,input:String,world:Option<Value>,api:Option<String>,context:Option<Value>,runtime_api:Option<String>,contract:Option<Value>,bridge:Option<bool>)->Result<String,String> {
+    let root=user_dir()?;
+    tauri::async_runtime::spawn_blocking(move||functions::execute_with_context_bridge(&root,&language,&code,&input,&world.unwrap_or(serde_json::json!({"classes":[]})),&api.unwrap_or_default(),&context.unwrap_or(Value::Null),&runtime_api.unwrap_or_default(),&contract.unwrap_or(Value::Null),bridge.unwrap_or(false))).await.map_err(|e|e.to_string())?
+}
+fn save_workspace_at(root: &Path, workspace: Value, files: HashMap<String, HashMap<String,String>>, _expected: FileSnapshot) -> Result<(), String> {
+    fs::create_dir_all(root).map_err(|e| e.to_string())?;
     for (world_id, entries) in files {
         let directory=root.join("worlds").join(safe_component(&world_id)?);
         fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
         for (name, content) in entries {
             let path=directory.join(safe_component(&name)?);
-            if name.ends_with(".md") || name.ends_with(".view.json") {
-                let original=expected.get(&world_id).and_then(|entries| entries.get(&name)).ok_or("Missing Markdown baseline")?;
-                verify_expected(&directory,&name,original)?;
-            }
-            if fs::read_to_string(&path).ok().as_deref()!=Some(content.as_str()) { write_atomic(&path,&content)?; }
+            write_atomic(&path,&content)?;
         }
     }
     if let Some(scripts)=workspace.get("functions").and_then(Value::as_array) {
@@ -138,7 +132,7 @@ fn save_workspace_at(root: &Path, workspace: Value, files: HashMap<String, HashM
             safe_component(id)?;
             let code=if language=="flow" {serde_json::to_string_pretty(script.get("flow").ok_or("Missing flow graph")?).map_err(|e|e.to_string())?}else {script.get("code").and_then(Value::as_str).ok_or("Missing function code")?.to_string()};
             let path=directory.join(format!("{}.{}",id,language));
-            if fs::read_to_string(&path).ok().as_deref()!=Some(code.as_str()) {write_atomic(&path,&code)?;}
+            write_atomic(&path,&code)?;
         }
         if let Some(old)=previous.as_ref().and_then(|value|value.get("functions")).and_then(Value::as_array) {
             for script in old {
@@ -170,20 +164,15 @@ mod tests {
         fs::remove_file(root.join(name)).unwrap();fs::remove_dir(root).unwrap();
     }
     #[test]
-    fn external_file_changes_prevent_all_writes() {
+    fn explicit_save_does_not_read_existing_markdown() {
         let suffix=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
         let root=std::env::temp_dir().join(format!("myuniverse-sync-{}-{}",std::process::id(),suffix));
         let directory=root.join("worlds").join("test-world");
         fs::create_dir_all(&directory).unwrap();
         let file=directory.join("人物列表.md");
-        fs::write(&file,"# 人物\n\n## 外部编辑\n").unwrap();
+        fs::write(&file,[0xff,0xfe,0x00]).unwrap();
         let files=HashMap::from([("test-world".into(),HashMap::from([("人物列表.md".into(),"# 人物\n\n## 界面编辑\n".into())]))]);
-        let stale=HashMap::from([("test-world".into(),HashMap::from([("人物列表.md".into(),Some("# 人物\n".into()))]))]);
-        assert_eq!(save_workspace_at(&root,serde_json::json!({}),files.clone(),stale).unwrap_err(),"MARKDOWN_CHANGED");
-        assert_eq!(fs::read_to_string(&file).unwrap(),"# 人物\n\n## 外部编辑\n");
-        assert!(!root.join("workspace.json").exists());
-        let expected=HashMap::from([("test-world".into(),HashMap::from([("人物列表.md".into(),Some(fs::read_to_string(&file).unwrap()))]))]);
-        save_workspace_at(&root,serde_json::json!({"worlds":[]}),files,expected).unwrap();
+        save_workspace_at(&root,serde_json::json!({"worlds":[]}),files,HashMap::new()).unwrap();
         assert_eq!(fs::read_to_string(&file).unwrap(),"# 人物\n\n## 界面编辑\n");
         fs::remove_file(file).unwrap();
         fs::remove_file(root.join("workspace.json")).unwrap();
@@ -198,7 +187,7 @@ mod tests {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![load_workspace, read_document_files, save_workspace, run_function, model_http::model_http, workflow_ws::watch_workflow_events, workflow_ws::stop_workflow_events, reveal_file, save_workflow_image])
+        .invoke_handler(tauri::generate_handler![load_workspace, read_document_files, save_workspace, run_function, model_http::model_http,model_stream::model_stream,model_stream::cancel_model_stream, workflow_ws::watch_workflow_events, workflow_ws::stop_workflow_events, reveal_file, save_workflow_image])
         .run(tauri::generate_context!())
         .expect("error while running MyUniverse");
 }

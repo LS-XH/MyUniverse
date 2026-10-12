@@ -1,0 +1,270 @@
+/* Shared cards family and its visual variants. */
+.ui-panel--plain {
+  --ui-border-width: 0;
+  --ui-border-style: none;
+  --ui-border-color: currentColor;
+  --ui-radius: 0;
+  --ui-shadow: none;
+}
+:where(.ui-panel--themed) {
+  --ui-bg: var(--panel);
+}
+:where(.ui-panel--text) {
+  --ui-fg: var(--text);
+}
+:where(.ui-card--themed) {
+  --ui-bg: var(--panel);
+}
+:where(.ui-card--text) {
+  --ui-fg: var(--text);
+}
+.ui-panel--empty {
+  --ui-border-width: 1px;
+  --ui-border-style: dashed;
+  --ui-radius: var(--ui-radius-14);
+}
+.ui-card--entity,
+.ui-panel--schema {
+  --ui-border-width: 1px;
+  --ui-border-style: solid;
+  --ui-radius: var(--ui-radius-11);
+}
+.ui-panel--hint {
+  --ui-border-width: 1px;
+  --ui-border-style: solid;
+  --ui-radius: var(--ui-radius-9);
+}
+.ui-card--collection {
+  --ui-border-width: 1px;
+  --ui-border-style: solid;
+  --ui-radius: var(--ui-radius-10);
+}
+.ui-panel--empty,
+.ui-card--entity,
+.ui-panel--schema,
+.ui-card--collection,
+.ui-panel--hint {
+  --ui-border-color: var(--border);
+}
+.ui-card--collection:hover {
+  --ui-bg: var(--hover);
+}
+.ui-card--theme {
+  --ui-radius: var(--ui-radius-12);
+}
+.ui-card--theme.selected {
+  --ui-border-color: var(--accent);
+  --ui-shadow: 0 0 0 1px var(--accent);
+}
+.ui-panel--theme {
+  --ui-radius: var(--ui-radius-12);
+}
+.ui-card--collection,
+.ui-card--entity {
+  transition: background var(--ui-duration-180) ease,border-color var(--ui-duration-180) ease,transform var(--ui-duration-140) ease,box-shadow var(--ui-duration-180) ease;
+  transform-origin: center;
+}
+.ui-card--collection:hover,
+.ui-card--entity:hover {
+  --ui-border-color: color-mix(in srgb,var(--accent) 45%,var(--border));
+  transform: translateY(-1px);
+  --ui-shadow: 0 4px 14px var(--ui-shadow-2);
+}
+.ui-card--collection:active {
+  transform: translateY(0) scale(.975);
+  --ui-shadow: 0 1px 4px var(--ui-shadow-1);
+}
+.ui-card--entity:has(.entity-header:active) {
+  transform: translateY(0) scale(var(--ui-card-press-x,1),var(--ui-card-press-y,1));
+  --ui-shadow: 0 1px 4px var(--ui-shadow-1);
+}
+.ui-card--entity:focus-within {
+  --ui-border-color: color-mix(in srgb,var(--accent) 55%,var(--border));
+}
+.ui-card--model {
+  --ui-radius: var(--ui-radius-12);
+  transition: border-color var(--ui-duration-180),box-shadow var(--ui-duration-180);
+}
+.ui-card--model.selected {
+  --ui-border-color: color-mix(in srgb,var(--accent) 70%,var(--border));
+  --ui-shadow: 0 0 0 2px color-mix(in srgb,var(--accent) 12%,transparent);
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-card--collection {
+    transition: none;
+  }
+  
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-card--entity {
+    transition: none;
+  }
+  
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-card--model {
+    transition: none;
+  }
+  
+}
+.ui-panel--object-assistant {
+  --ui-bg: var(--surface);
+  --ui-radius: var(--ui-radius-10);
+}
+.ui-card--output {
+  --ui-fg: var(--muted);
+}
+.ui-card--entity.entity-focused {
+  --ui-border-color: var(--accent);
+  --ui-shadow: 0 0 0 2px color-mix(in srgb,var(--accent) 45%,transparent);
+  --ui-bg: color-mix(in srgb,var(--accent) 12%,var(--panel));
+  transition: background var(--ui-duration-300),box-shadow var(--ui-duration-300),border-color var(--ui-duration-300),transform var(--ui-duration-140) ease;
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-card--entity.entity-focused {
+    transition: none;
+  }
+  
+}
+.ui-panel--contract {
+  --ui-radius: var(--ui-radius-8);
+}
+:is(.entity-fields,.schema-editor-content) .field-card {
+  --ui-border-width: 1px;
+  --ui-border-style: solid;
+  --ui-border-color: var(--border);
+  --ui-radius: var(--ui-radius-10);
+  --ui-bg: var(--panel);
+  transform: scale(1);
+  transform-origin: center;
+  transition: transform var(--ui-duration-240) ease-out,box-shadow var(--ui-duration-280) ease,border-color var(--ui-duration-280) ease,background var(--ui-duration-280) ease;
+}
+:is(.entity-fields,.schema-editor-content) .field-card.field-card-hovered {
+  transform: scale(var(--ui-card-grow-x,1),var(--ui-card-grow-y,1));
+  --ui-border-color: color-mix(in srgb,var(--accent) 45%,var(--border));
+  --ui-bg: color-mix(in srgb,var(--panel) 96%,var(--accent));
+  --ui-shadow: 0 8px 20px var(--ui-shadow-18),0 2px 5px var(--ui-shadow-0c);
+}
+@media (prefers-reduced-motion:reduce) {
+  :is(.entity-fields,.schema-editor-content) .field-card {
+    transition: none;
+  }
+  
+}
+@media (prefers-reduced-motion:reduce) {
+  :is(.entity-fields,.schema-editor-content) .field-card.field-card-hovered {
+    transform: none;
+  }
+  
+}
+.ui-panel--workflow-settings,
+.ui-panel--workflow-variables,
+.ui-panel--workflow-run {
+  --ui-border-width: 1px;
+  --ui-border-style: solid;
+  --ui-border-color: var(--border);
+  --ui-radius: var(--ui-radius-10);
+}
+:is(.editor-drawer,.workflow-inspector-content) .workflow-settings,
+:is(.editor-drawer,.workflow-inspector-content) .workflow-variable-editor {
+  --ui-border-width: 0;
+  --ui-border-style: none;
+  --ui-border-color: currentColor;
+}
+.editor-page .object-call-assistant {
+  --ui-radius: 0;
+}
+.ui-card--variable {
+  --ui-radius: var(--ui-radius-8);
+  --ui-bg: color-mix(in srgb,var(--surface) 50%,var(--panel));
+}
+.ui-card--variable {
+  transition: transform var(--ui-duration-220) cubic-bezier(.22,.8,.25,1),opacity var(--ui-duration-180),background var(--ui-duration-180),box-shadow var(--ui-duration-180);
+}
+.ui-card--variable:hover {
+  --ui-bg: var(--hover);
+  --ui-shadow: 0 3px 12px color-mix(in srgb,var(--border) 35%,transparent);
+}
+.ui-card--variable.is-dragging {
+  opacity: .18;
+}
+.ui-card--inline-variable {
+  cursor: grab;
+}
+.ui-card--input,
+.ui-card--output,
+.ui-card--input-output {
+  --ui-radius: var(--ui-radius-7);
+  outline: 1px solid transparent;
+  outline-offset: -1px;
+  transition: outline-color var(--ui-duration-180),box-shadow var(--ui-duration-180);
+}
+.ui-card--input:hover,
+.ui-card--output:hover,
+.ui-card--input-output:hover {
+  outline-color: var(--accent);
+  --ui-shadow: 0 0 8px color-mix(in srgb,var(--accent) 22%,transparent);
+}
+.ui-card--inline-variable {
+  --ui-border-width: 0;
+  --ui-border-style: none;
+  --ui-border-color: currentColor;
+  --ui-bg: transparent;
+  transform-origin: center;
+  transition: transform var(--ui-duration-220) ease,box-shadow var(--ui-duration-220) ease,color var(--ui-duration-220) ease,background-color var(--ui-duration-220) ease;
+}
+.ui-card--inline-variable:hover {
+  --ui-bg: var(--hover);
+  transform: perspective(1000px) translateZ(8px) scale(1.025);
+  --ui-shadow: 0 5px 14px color-mix(in srgb,var(--border) 35%,transparent);
+}
+.ui-card--inline-variable:active {
+  transform: perspective(1000px) translateZ(4px) scale(1.01);
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-card--variable {
+    transition: none;
+  }
+  
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-card--input {
+    transition: none;
+  }
+  
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-card--output {
+    transition: none;
+  }
+  
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-card--input-output {
+    transition: none;
+  }
+  
+}
+.ui-panel--proposal {
+  --ui-radius: var(--ui-radius-10);
+}
+.ui-panel--chat-process {
+  --ui-radius: var(--ui-radius-10);
+}
+.ui-panel--tool-models {
+  --ui-radius: var(--ui-radius-8);
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-card--inline-variable {
+    transition: none;
+  }
+  
+}
+
+.ui-card.model-capability-option {--ui-bg:var(--input);--ui-fg:var(--text);--ui-radius:var(--ui-radius-7);--ui-border-width:1px;--ui-border-style:solid;--ui-border-color:var(--border);}
+.ui-card.model-capability-option:hover {--ui-bg:var(--hover);}
+.ui-card.model-capability-option[data-selected=true] {--ui-bg:var(--active);--ui-border-color:var(--accent);}
+.ui-card.model-capability-option[data-disabled=true] {opacity:.65;}
+.ui-card.model-capability-option:focus-within {outline:2px solid var(--accent);outline-offset:2px;}
+
+@media (prefers-reduced-motion:reduce) { .ui-card--entity:hover,.ui-card--entity:has(.entity-header:active) { transform:none; } }

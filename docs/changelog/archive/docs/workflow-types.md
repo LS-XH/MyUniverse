@@ -1,12 +1,14 @@
 # 工作流编辑与严格类型变量
 
+2026-10-10 最新规范见 [工作流结构与交互调整](workflow-structure-update.md)：Tool 已迁移为 Tools/TOOLS；显式端口变量引用也是写入入口；基础 LLM 与 ToolCalls 分开。以下早期设计与验收记录保留作历史参考，有差异时以最新规范为准。
+
 更新：2026-10-09。本文件是 Agent / SD 的变量与上下文设计规范；Function Flow 复用画布编辑交互，仍使用自己的 Function 编译和返回契约。
 
 ## 设计原则
 
 变量是具有明确类型的程序对象，不是把任意 JSON 放在一个 ANY 容器中。变量的读和写是同一个节点的两个状态：可以接受新值，也可以输出当前值。方法节点操作该类型的值，属性节点读取值的成员；它们与变量节点分别承担计算和保存状态的职责。
 
-Messages 和 Image 是封装类型。它们的结构必须保留语义，不能通过 stringify 混同为普通 String。模型卡片负责一次调用；上下文的构造、裁剪、工具调用配对和跨运行保存由显式节点完成。图中每条线既表示数据来源，也决定执行依赖。
+Messages、Image 和 Tool 是封装类型。它们的结构必须保留语义，不能通过 stringify 混同为普通 String。模型卡片负责一次调用；上下文的构造、裁剪、工具调用配对和跨运行保存由显式节点完成。图中每条线既表示数据来源，也决定执行依赖。
 
 UI 保持画布为主要工作区。节点库沿用侧栏的文件夹树、缩进线与右侧展开箭头；辅助操作使用紧凑工具栏，不通过大标题挤压画布。
 
@@ -30,17 +32,18 @@ UI 保持画布为主要工作区。节点库沿用侧栏的文件夹树、缩�
   "count": {"type":"Number","value":3},
   "enabled": {"type":"Boolean","value":true},
   "history": {"type":"Messages","value":{"type":"Messages","version":1,"items":[]}},
-  "cover": {"type":"Image","value":{"type":"Image","version":1,"url":""}}
+  "cover": {"type":"Image","value":{"type":"Image","version":1,"url":""}},
+  "tools": {"type":"Tool","value":{"type":"Tool","version":1,"toolIds":["builtin:list_classes"]}}
 }
 ```
 
-外层 type 表示变量声明；内层 Messages/Image 是独立可传递的封装值。这样变量、方法参数、函数返回桥接和持久化层不会混淆。String/Number/Boolean 的端口值分别是 JS string、有限 number、boolean。Messages/Image 的端口值是下文定义的对象。Function 的 Text/Object/Class 等原有 TypedValue 契约保持独立，通过现有 Function 节点显式调用，不把这两套类型自动混为一体。
+外层 type 表示变量声明；内层 Messages/Image/Tool 是独立可传递的封装值。这样变量、方法参数、函数返回桥接和持久化层不会混淆。String/Number/Boolean 的端口值分别是 JS string、有限 number、boolean。Messages/Image 的端口值是下文定义的对象。Function 的 Text/Object/Class 等原有 TypedValue 契约保持独立，通过现有 Function 节点显式调用，不把这两套类型自动混为一体。
 
 新变量默认使用带随机后缀的独立名称。复制卡片保留名称，因此复制变量卡片会访问同一份变量；需要独立状态时修改名称。同名新变量节点必须声明相同类型，运行前会拒绝冲突。
 
 ## 合并读写的变量节点
 
-kind=`variable`，settings.variableType 是 String/Number/Boolean/Messages/Image，settings.name 是存储身份。value 输入和 value 输出使用同一种具体端口类型，after 是只承担顺序约束的执行依赖。
+kind=`variable`，settings.variableType 是 String/Number/Boolean/Messages/Image/Tool，settings.name 是存储身份。value 输入和 value 输出使用同一种具体端口类型，after 是只承担顺序约束的执行依赖。
 
 - value 没有连线且未设置字面量：读取变量；不存在时使用该类型默认值。
 - value 有连线或存在 `settings["port:value"]`：校验并写入，再输出写入值。
@@ -96,9 +99,9 @@ interface ToolCall {
 }
 ```
 
-工具 arguments 是有效 JSON 的字符串，不是直接嵌入的原生对象。调用 ID 必须唯一；tool_calls 只允许在 assistant 中；tool 消息必须匹配之前尚未返回的 tool_call_id，不能孤立或重复返回。mcp 字段保留来源服务器与工具名，供后续调度使用；发送兼容模型请求时只传标准 tool_calls 字段，不把内部 MCP 来源元数据发送给模型接口。当前实现保存和传递该上下文，尚未提供 MCP 服务器连接与自动工具循环；已有 HTTP Tool 节点可执行显式接入的工具服务。
+工具 arguments 是有效 JSON 的字符串，不是直接嵌入的原生对象。调用 ID 必须唯一；tool_calls 只允许在 assistant 中；tool 消息必须匹配之前尚未返回的 tool_call_id，不能孤立或重复返回。mcp 字段保留来源服务器与工具名，供后续调度使用；发送兼容模型请求时只传标准 tool_calls 字段，不把内部 MCP 来源元数据发送给模型接口。当前实现保存和传递该上下文；配置注册 Tool 后，LLM 自动执行最多 16 轮工具交流。Tool 节点支持 JS/HTTP 显式调用。尚未提供远程 MCP 服务器连接。
 
-LLM 保留兼容的 value:STRING 文本输出，新增 messages:MESSAGES 输出，保存本次完整 assistant 消息（包括 content=null 的工具请求和 tool_calls）。聊天的 callLLM 文本接口继续可用；工作流通过 callLLMMessage 获取结构化消息。模型的附加请求 JSON 可携带兼容服务要求的 tools 配置。
+LLM 保留兼容的 value:STRING 文本输出，新增 messages:MESSAGES 输出，保存本次完整 assistant/tool 交流（包括 content=null 的工具请求和 tool_calls）。聊天的 callLLM 文本接口继续可用；工作流通过 callLLMMessage 获取结构化消息。模型的附加请求 JSON 可携带兼容服务要求的 tools 配置。
 
 推荐一次对话的显式数据流：
 
@@ -111,7 +114,7 @@ LLM 保留兼容的 value:STRING 文本输出，新增 messages:MESSAGES 输出�
 
 裁剪按 user 开始的完整轮次保留，并保留之前的 system；不会仅按数组条数随意切断 assistant ToolUse 与 tool 返回。待处理调用允许存在于 Messages 中，以便工具步骤继续执行；发送给真实服务的完整工具交流仍需按服务协议编排。
 
-兼容消息协议参考：[Chat Completions API](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)。未加入多模态 content parts、流式输出、自动循环与所有供应商的专有消息字段。
+兼容消息协议参考：[Chat Completions API](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)。未加入多模态 content parts、流式输出与所有供应商的专有消息字段；注册 Tool 自动交流见 [脚本与 Tool 架构](script-runtime-and-tools.md)。
 
 ## Image 结构与资源职责
 
@@ -186,3 +189,23 @@ ComfyUI 原生节点的执行通过 WebSocket 按 prompt_id 过滤，桌面端�
 
 
 2026-10-09 图标渲染修正：Letters、ScanBox、FileCodeCorner、SquareSparkles 的官方 Lucide 路径通过 createLucideIcon 生成内联 SVG，与内置 Binary 等图标使用相同渲染机制。移除带背景的 span/CSS mask；节点库仅文字 span 扩展，SVG 固定尺寸且不收缩，描边使用 currentColor，避免黑色矩形和 WebView 外部遮罩兼容问题。SD 列表、模型导航、节点库、画布与变量类型菜单共用这些组件。
+
+
+## Agent Tool 类型（2026-10-10）
+
+用户要求把 Tool 获取和消费节点封装为明确的 Tool 类型，避免 ANY 接入错误。新增 `ToolValue = {type:"Tool",version:1,toolIds:string[]}`，端口使用 TOOL；只存稳定注册 ID，不复制脚本、配置或密钥。每次执行按统一注册表解析，官方模板、用户 JS 和 HTTP Tool 共享桥梁；缺失或停用时报错。
+
+变量目录分为 String、Number、Boolean、Messages、Image、Tool，每种类型内有基础变量、方法、属性子目录。Tool 基础变量仍是合并读写节点，持久化为 `{type:"Tool",value:ToolValue}`，另有变量池既有稳定 id；图上只传 ToolValue。禁止新建 ANY 变量，同名声明须一致，失败不提交局部 Agent memory。
+
+Tool 方法包含获取 Tool（选择注册项，输出新的单工具对象）、合并 Tool（返回去重的新工具集合）、调用 Tool（self 接受一个 Tool，arg 接受参数 JSON 文本，返回 STRING 结果）；属性包含工具数量和工具说明/参数 JSON。方法不隐式保存变量，仅将结果显式连接到变量 value 才写入。
+
+Agent 的“调用 Tool”服务卡片 tool 输入使用 TOOL，input 使用参数 JSON 的 STRING，value 输出 STRING。未连接 tool 时可在卡片内选择注册 Tool。新卡片不配置内联 HTTP，请先注册 HTTP Tool。LLM 新增 tools:TOOL 输入，可接入工具集合；显式空集合禁用本次工具，未提供输入则沿用模型 toolIds。工具执行及 ToolUse 消息配对仍通过已有模型桥梁。
+
+TOOL 输入拒绝 String、Image、普通对象和 ANY 输出，图连接与运行均校验；Tool 返回的数据不是工具身份，因此不会冒充 TOOL。ANY 仍可用于执行依赖和通用返回端口。已有持久化 HTTP Tool 节点保留旧参数/结果行为，不自动改写用户连线或数据；新增节点全部使用明确的工具端口。
+
+104 项前端测试通过，覆盖严格 Tool 值、错类型连线、序列化、显式变量保存、方法新值、禁用/缺失引用、JSON 参数、同名类型冲突、LLM Tool 输入和旧 HTTP 节点兼容。内存页面实际运行“获取 Tool → TOOL → 调用 Tool”返回类名列表，确认目录分组；不使用真实模型服务或用户持久化项目。生产构建、桌面构建通过，固定 exe 与快捷方式已更新。
+
+
+## 节点库固定搜索与全部展开（2026-10-10）
+
+节点库去掉缩进层级线，保留缩进与展开箭头。Agent / SD 的 workflow-library-search 移出独立滚动内容区，固定在标题下方，与树内容留出间距。节点库标题旁新增展开/收起全部目录按钮，递归作用于类型、方法、属性及 ComfyUI 分类；单个目录仍能独立操作。Function Flow 节点库复用相同的全部展开控制与无线条树样式。浏览器已验证全部收起、嵌套目录全部展开，以及滚动前后搜索框位置相同且不在滚动容器内。

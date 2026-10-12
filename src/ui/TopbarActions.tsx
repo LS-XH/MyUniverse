@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { isTauri } from '@tauri-apps/api/core'
-import { FolderOpen, MoreHorizontal } from 'lucide-react'
+import { Save, RefreshCw, FolderOpen, MoreHorizontal } from 'lucide-react'
 
 function Icon({button}:{button:HTMLButtonElement}) {
   const slot=useRef<HTMLSpanElement>(null)
@@ -8,7 +8,7 @@ function Icon({button}:{button:HTMLButtonElement}) {
   return <span ref={slot} aria-hidden="true">{!button.querySelector('svg')&&<MoreHorizontal size={20}/>}</span>
 }
 // Invoke original page controls so imports, confirmation and disabled state stay shared.
-export default function TopbarActions({revision,location,onReveal}:{revision:string;location?:string[]|null;onReveal?:()=>Promise<void>}) {
+export default function TopbarActions({revision,location,onReveal,fileActions}:{revision:string;location?:string[]|null;onReveal?:()=>Promise<void>;fileActions?:{save:()=>void;refresh:()=>void;busy:boolean}}) {
   const [revealing,setRevealing]=useState(false)
   const [actions,setActions]=useState<HTMLButtonElement[]>([])
   useLayoutEffect(()=>{
@@ -16,5 +16,5 @@ export default function TopbarActions({revision,location,onReveal}:{revision:str
     const gather=()=>setActions(Array.from(page.querySelectorAll<HTMLButtonElement>('.heading-actions button,.editor-file-actions button')))
     gather();const observer=new MutationObserver(gather);observer.observe(page,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled','aria-pressed','title']});return()=>observer.disconnect()
   },[revision])
-  return <div className="topbar-page-actions">{location&&<button className="icon-button" disabled={!isTauri()||revealing} title={!isTauri()?'桌面版可打开文件所在位置':`打开文件所在位置：user/${location.join('/')}`} aria-label="打开文件所在位置" onClick={async()=>{if(!onReveal)return;setRevealing(true);try{await onReveal()}finally{setRevealing(false)}}}><FolderOpen size={20}/></button>}{actions.map((button,i)=>{const label=button.getAttribute('aria-label')||button.textContent?.trim()||button.title||'操作';return <button key={i} className={`icon-button ${button.classList.contains('danger')?'danger':''}`} title={label} aria-label={label} disabled={button.disabled} aria-pressed={button.hasAttribute('aria-pressed')?button.getAttribute('aria-pressed')==='true':undefined} onClick={()=>button.click()}><Icon button={button}/></button>})}</div>
+  return <div className="topbar-page-actions">{fileActions&&<><button className="icon-button ui-button--icon ui-surface ui-button ui-button--topbar-icon" disabled={fileActions.busy} aria-label="保存当前文件" title="保存当前文件（Ctrl+S）" onClick={fileActions.save}><Save size={20}/></button><button className="icon-button ui-button--icon ui-surface ui-button ui-button--topbar-icon" disabled={fileActions.busy} aria-label="刷新当前文件" title="重新读取文件并计算函数（Ctrl+R），放弃当前文件未保存修改" onClick={fileActions.refresh}><RefreshCw size={20}/></button></>}{location&&<button className="icon-button ui-button--icon ui-surface ui-button ui-button--topbar-icon" disabled={!isTauri()||revealing} title={!isTauri()?'桌面版可打开文件所在位置':`打开文件所在位置：user/${location.join('/')}`} aria-label="打开文件所在位置" onClick={async()=>{if(!onReveal)return;setRevealing(true);try{await onReveal()}finally{setRevealing(false)}}}><FolderOpen size={20}/></button>}{actions.map((button,i)=>{const label=button.getAttribute('aria-label')||button.textContent?.trim()||button.title||'操作';return <button key={i} className={`icon-button ui-button--icon ${button.classList.contains('danger')?'danger':''} ui-surface ui-button ui-button--topbar-icon`} title={label} aria-label={label} disabled={button.disabled} aria-pressed={button.hasAttribute('aria-pressed')?button.getAttribute('aria-pressed')==='true':undefined} onClick={()=>button.click()}><Icon button={button}/></button>})}</div>
 }

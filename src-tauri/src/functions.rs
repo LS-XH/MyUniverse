@@ -8,6 +8,9 @@ pub fn execute_with_world(root:&Path, language:&str, code:&str, input:&str, worl
     execute_with_context(root,language,code,input,world,api,&Value::Null,"",&Value::Null)
 }
 pub fn execute_with_context(root:&Path, language:&str, code:&str, input:&str, world:&Value, api:&str, context:&Value, runtime_api:&str, contract:&Value) -> Result<String,String> {
+    execute_with_context_bridge(root,language,code,input,world,api,context,runtime_api,contract,false)
+}
+pub fn execute_with_context_bridge(root:&Path, language:&str, code:&str, input:&str, world:&Value, api:&str, context:&Value, runtime_api:&str, contract:&Value, bridge:bool) -> Result<String,String> {
     if !["js","py"].contains(&language) { return Err("Unsupported function language".into()); }
     if code.len()>1_000_000 || input.len()>1_000_000 { return Err("Function input or script exceeds 1 MB".into()); }
     let token=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e|e.to_string())?.as_nanos();
@@ -36,25 +39,47 @@ const request=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 }catch(error){fs.writeFileSync(process.argv[3],JSON.stringify({error:error&&error.stack?String(error.stack):String(error)}));}})();
 "# } else { r#"
 import json, sys, inspect, traceback
+mutations = []
 class WorldObject:
-    def __init__(self, data):
+    def __init__(self, data, path=None):
         self.data = data
+        self.path = path or []
         self.id = data.get('id', '')
         self.name = data.get('name', '')
     def _get(self, category, key):
         matches = [item for item in self.data.get(category, []) if item['id'] == key or item['name'] == key]
         if len(matches) != 1:
             raise ValueError('对象不存在或重名，请使用 ID: ' + str(key))
-        return WorldObject(matches[0])
-    def classes(self): return [WorldObject(item) for item in self.data.get('classes', [])]
-    def instances(self): return [WorldObject(item) for item in self.data.get('instances', [])]
-    def members(self): return [WorldObject(item) for item in self.data.get('members', [])]
+        return WorldObject(matches[0], self.path + [matches[0]['id']])
+    def classes(self): return [WorldObject(item, self.path + [item['id']]) for item in self.data.get('classes', [])]
+    def instances(self): return [WorldObject(item, self.path + [item['id']]) for item in self.data.get('instances', [])]
+    def members(self): return [WorldObject(item, self.path + [item['id']]) for item in self.data.get('members', [])]
     def get_class(self, key): return self._get('classes', key)
     def get_instance(self, key): return self._get('instances', key)
     def get_member(self, key): return self._get('members', key)
     def markdown(self): return self.data.get('markdown', '')
     def value(self): return self.data.get('value', '')
     def schema(self): return self.data.get('schema', [])
+    def delete(self):
+        if len(self.path) not in (1, 2): raise ValueError('只能删除类或实例')
+        mutations.append({'path': self.path, 'operation': 'delete'})
+    def add(self, selector_or_value, value_or_key=None, key=None):
+        if isinstance(selector_or_value, str):
+            mutations.append({'path': self.path, 'operation': 'add', 'selector': selector_or_value, 'value': value_or_key, 'key': key})
+        else:
+            mutations.append({'path': self.path, 'operation': 'add', 'value': selector_or_value, 'key': value_or_key})
+    def append_repeatable(self, selector, value, key=None):
+        mutations.append({'path': self.path, 'operation': 'append_repeatable', 'selector': selector, 'value': value, 'key': key})
+    def append_self(self, value, key=None):
+        mutations.append({'path': self.path, 'operation': 'append_self', 'value': value, 'key': key})
+    def set_value(self, value):
+        if len(self.path) < 3: raise ValueError('只能修改属性值')
+        mutations.append({'path': self.path, 'operation': 'set_value', 'value': value})
+        self.data['value'] = '' if value is None else str(value)
+    def set_markdown(self, value):
+        if len(self.path) != 1: raise ValueError('请在类上修改 Markdown')
+        mutations.append({'path': self.path, 'operation': 'set_markdown', 'value': value})
+
     @property
     def type(self): return self.data.get('typed', {}).get('type')
     def to_value(self):
@@ -78,7 +103,9 @@ try:
         current.data['typed'] = {'type': 'Class'}
         current.schema = lambda: world.get_class(current.classId).schema()
         current.to_value = lambda: values.reference(current.classId, current.id)
-        value = transform(current, TypedInput(context['input'], world))
+        binding = current if context.get('bindingPath') else None
+        for member_id in context.get('bindingPath', []): binding = binding.get_member(member_id)
+        value = transform(current, TypedInput(context['input'], world, binding))
     else:
         try:
             inspect.signature(transform).bind(request['input'], world)
@@ -86,11 +113,13 @@ try:
         except TypeError:
             two_parameters = False
         value = transform(request['input'], world) if two_parameters else transform(request['input'])
-    if (typed and not isinstance(value, dict)) or (not typed and not isinstance(value, str)):
+    void_mode = (request.get('contract') or {}).get('type') == 'Void'
+    if void_mode: value = None
+    if not void_mode and ((typed and not isinstance(value, dict)) or (not typed and not isinstance(value, str))):
         raise TypeError('函数必须返回带 type 的值对象' if typed else '函数必须返回字符串')
     if len(json.dumps(value, ensure_ascii=False).encode('utf-8')) > 1000000:
         raise ValueError('返回值超过 1 MB')
-    result = {'value': value}
+    result = {'value': value, 'mutations': mutations}
 except BaseException as error:
     result = {'error': traceback.format_exc()}
 with open(sys.argv[2], 'w', encoding='utf-8') as f:
@@ -130,6 +159,7 @@ with open(sys.argv[2], 'w', encoding='utf-8') as f:
         if fs::metadata(&output).map_err(|_|format!("函数未返回结果。\n{}",diagnostics()))?.len()>6_000_000 {return Err("返回值过大".into());}
         let result:Value=serde_json::from_str(&fs::read_to_string(output).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
         if let Some(error)=result.get("error").and_then(Value::as_str) {return Err(error.into());}
+        if bridge {return serde_json::to_string(&result).map_err(|e|e.to_string());}
         if !context.is_null(){return serde_json::to_string(result.get("value").ok_or("函数没有返回值")?).map_err(|e|e.to_string());}
         result.get("value").and_then(Value::as_str).map(str::to_owned).ok_or("函数必须返回字符串".into())
     })();
@@ -140,6 +170,45 @@ with open(sys.argv[2], 'w', encoding='utf-8') as f:
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn python_bridge_returns_host_operations_without_writing_world_files() {
+        let root=std::env::temp_dir().join(format!("myuniverse-python-bridge-{}",std::process::id()));
+        let world=json!({"classes":[{"id":"items","name":"物件","instances":[{"id":"a","name":"甲","members":[{"id":"field","name":"描述","value":"旧值"}]}]}]});
+        let result=execute_with_context_bridge(&root,"py","def transform(input):\n    world.get_class('items').get_instance('a').get_member('field').set_value(input)\n    world.get_class('items').get_instance('a').delete()\n    return '完成'","新值",&world,"",&Value::Null,"",&Value::Null,true).unwrap();
+        let result:Value=serde_json::from_str(&result).unwrap();
+        assert_eq!(result["value"],"完成");assert_eq!(result["mutations"][0]["path"],json!(["items","a","field"]));
+        assert_eq!(result["mutations"][0]["operation"],"set_value");assert_eq!(result["mutations"][1]["operation"],"delete");
+        assert!(!root.join("worlds").exists());fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn typed_python_append_bridge_tracks_nested_binding_paths() {
+        let root=std::env::temp_dir().join(format!("myuniverse-python-append-{}",std::process::id()));
+        let world=json!({"classes":[{"id":"items","name":"物件","instances":[{"id":"a","name":"甲","members":[{"id":"root","name":"内容","schema":{"id":"schema-root"},"members":[{"id":"child","name":"子对象","members":[]}]}]}]}]});
+        let context=json!({"self":{"classId":"items","entityId":"a"},"bindingPath":["root"],"input":{"type":"Object","members":[{"id":"child","schemaId":"schema-child","key":"子对象","value":{"type":"Object","members":[]}}]}});
+        let code="def transform(self,input):\n    input.append_repeatable('notes', values.text('新增'))\n    input.get_member('child').append_repeatable('numbers', values.integer(42))\n    input.get_member('child').append_self(values.object([]))\n    return values.text(input.schema()['id'])";
+        let result=execute_with_context_bridge(&root,"py",code,"",&world,"",&context,"",&json!({"type":"Text"}),true).unwrap();
+        let result:Value=serde_json::from_str(&result).unwrap();
+        assert_eq!(result["value"]["value"],"schema-root");
+        assert_eq!(result["mutations"][0]["path"],json!(["items","a","root"]));
+        assert_eq!(result["mutations"][1]["path"],json!(["items","a","root","child"]));
+        assert_eq!(result["mutations"][1]["value"],json!({"type":"Integer","value":42}));
+        assert_eq!(result["mutations"][2]["operation"],"append_self");
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn void_python_add_does_not_require_or_serialize_return_values() {
+        let root=std::env::temp_dir().join(format!("myuniverse-python-void-{}",std::process::id()));
+        let world=json!({"classes":[{"id":"items","name":"物件","instances":[{"id":"a","name":"甲","members":[{"id":"root","name":"内容","members":[]}]}]}]});
+        let context=json!({"self":{"classId":"items","entityId":"a"},"bindingPath":["root"],"input":{"type":"Object","members":[]}});
+        for end in ["", "\n    return {'arbitrary': object()}"] {
+            let code=format!("def transform(self,input):\n    input.add('notes', values.text('新增')){end}");
+            let result=execute_with_context_bridge(&root,"py",&code,"",&world,"",&context,"",&json!({"type":"Void"}),true).unwrap();
+            let result:Value=serde_json::from_str(&result).unwrap();
+            assert_eq!(result["value"],Value::Null);assert_eq!(result["mutations"][0]["operation"],"add");
+            assert_eq!(result["mutations"][0]["selector"],"notes");
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn typed_javascript_entry_receives_self_and_input_and_preserves_structures() {
         let root=std::env::temp_dir().join(format!("myuniverse-typed-js-test-{}",std::process::id()));

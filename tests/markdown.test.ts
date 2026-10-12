@@ -1,14 +1,18 @@
+import {bindScriptHost} from '../src/services/scriptHost'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { ClassDocument, Workspace, World } from '../src/model/types'
 import { createWorld } from '../src/model/templates'
 import { documentMarkdown, markdownLocations, markdownHeadingLevels, parseDocumentMarkdown } from '../src/model/markdown'
 import { mergeThreeWay } from '../src/model/merge'
-import { loadWorkspace, saveWorkspace, refreshWorkspace, MarkdownConflictError, applySyncResult, clearMarkdownConflict, replaceDocumentFromImport } from '../src/services/storage'
+import { loadWorkspace, saveWorkspace, refreshWorkspace,  applySyncResult,  replaceDocumentFromImport } from '../src/services/storage'
 
 function fixture() {
   const world = createWorld('测试世界')
   const template = world.documents.find(d => d.id === 'people')!
+  // Retain explicit coverage of the historical Class-value relationship schema.
+  const legacyRelation=template.schema.find(s=>s.key==='人物关系')!.children![0].children!.find(s=>s.key==='关系')!
+  legacyRelation.valueType='Class';legacyRelation.classId='relations';legacyRelation.children=undefined;legacyRelation.repeatable=true
   const text = '# 人物\n\n## 林青\n\n### 人物关系\n\n#### [沈白](人物列表.md#沈白)\n\n##### 关系\n\n[朋友](关系类型.md#朋友)\n\n##### 人物关系小故事\n\n###### 初遇\n\n```md\n## code, not an entity\n```\n\n### 人物势力\n\n#### 势力名称\n\n[青山](势力列表.md#青山)\n\n#### 势力地位\n\n队长\n\n### 人物性格\n\n谨慎\n\n### 人物喜好\n\n读书\n\n## 沈白\n\n### 人物性格\n\n开朗\n'
   const doc = parseDocumentMarkdown(text, template, world)
   world.documents = world.documents.map(d => d.id === doc.id ? doc : d)
@@ -51,17 +55,20 @@ test('text headings, escapes, Markdown body and nesting deeper than six are pres
   assert.equal(value(doc, '正文'), '故事\n#### 章节小标题\n后续文字')
   doc.entities[0].fields.find(f => f.key === '正文')!.value += '\n## 正文内的二级标题\n\\# 原有转义\n~~~md\n# fenced heading\n~~~'
   assert.deepEqual(parseDocumentMarkdown(documentMarkdown(doc), doc), doc)
-  const deep = parseDocumentMarkdown('# 故事\n## 章节\n### 一\n#### 二\n##### 三\n###### 四\n####### 五\n######## 六\n叶子内容\n', { ...template, schema: [] })
+  const deep = parseDocumentMarkdown('# 故事\n## 章节\n### 一\n#### 二\n##### 三\n###### 四\n####### 五\n######## 六\n叶子内容\n', { ...template, schema: ['一','二','三','四','五','六'].reduceRight<import('../src/model/types').FieldSchema[]>((children,key,i)=>[{id:String(i),keyType:'Const',key,valueType:children.length?'Object':'Content',...(children.length?{children}:{})}],[]) })
   assert.deepEqual(parseDocumentMarkdown(documentMarkdown(deep), deep), deep)
-  assert.equal(value(doc, '内容'), '开场正文')
+  assert.ok(!doc.schema.some(s=>s.key==='内容'))
 })
-test('unknown properties extend the schema across instances and duplicate fields remain repeatable', () => {
+test('unknown properties and duplicate nonrepeatable headings never change configured schema', () => {
   const { doc, world } = fixture()
-  const imported = parseDocumentMarkdown(documentMarkdown(doc) + '\n### 外号\n白衣\n### 外号\n剑客\n', doc, world)
-  assert.equal(imported.schema.find(s => s.key === '外号')!.repeatable, true)
-  assert.deepEqual(imported.entities[1].fields.filter(f => f.key === '外号').map(f => f.value), ['白衣', '剑客'])
+  const imported = parseDocumentMarkdown(documentMarkdown(doc) + '\n### 外号\n白衣\n#### 未知子项\n内容\n### 外号\n剑客\n### 人物性格\n重复项\n', doc, world)
+  assert.deepEqual(imported.schema,doc.schema)
+  assert.ok(!imported.entities.some(e=>e.fields.some(f=>f.key==='外号')))
+  assert.equal(imported.entities[1].fields.filter(f=>f.key==='人物性格').length,1)
+  assert.equal(imported.entities[1].fields.find(f=>f.key==='人物性格')!.value,'开朗')
   assert.deepEqual(parseDocumentMarkdown(documentMarkdown(imported), imported, world), imported)
 })
+
 test('removal clears fixed values without changing their IDs; entity rename retains identity', () => {
   const { doc, world } = fixture()
   const parsed = parseDocumentMarkdown('# 人物\n## 林青改名\n## 沈白\n', doc, world)
@@ -95,20 +102,19 @@ test('three-way merge preserves independent edits, additions and deletions and d
 type Disk = Record<string, Record<string, string | null>>
 function mockDisk(workspace: Workspace, override?: string) {
   const files: Disk = Object.fromEntries(workspace.worlds.map(w => [w.id, Object.fromEntries(w.documents.map(d => [d.fileName, d.id === 'people' && override !== undefined ? override : documentMarkdown(d)]))]))
-  let saves = 0, race: (() => void) | undefined
+  let reads=0; let saves = 0, race: (() => void) | undefined
   Object.assign(globalThis, { isTauri: true, window: { __TAURI_INTERNALS__: { invoke: async (command: string, args: any) => {
     if (command === 'load_workspace') return structuredClone(workspace)
-    if (command === 'read_document_files') return Object.fromEntries(Object.entries(args.requests as Record<string, string[]>).map(([id, names]) => [id, Object.fromEntries(names.map(name => [name, files[id]?.[name] ?? null]))]))
+    if (command === 'read_document_files') {reads++;return Object.fromEntries(Object.entries(args.requests as Record<string, string[]>).map(([id, names]) => [id, Object.fromEntries(names.map(name => [name, files[id]?.[name] ?? null]))]))}
     if (command === 'save_workspace') {
       if (race) { const action = race; race = undefined; action() }
-      for (const [id, output] of Object.entries(args.files as Record<string, Record<string, string>>)) for (const name of Object.keys(output).filter(name => name.endsWith('.md')||name.endsWith('.view.json'))) assert.equal(args.expected[id][name], files[id]?.[name] ?? null, 'MARKDOWN_CHANGED')
       for (const [id, output] of Object.entries(args.files as Record<string, Record<string, string>>)) files[id] = { ...files[id], ...output }
       saves++
       return
     }
     throw new Error(`Unexpected command ${command}`)
   } } } })
-  return { files, get saves() { return saves }, race(action: () => void) { race = action } }
+  return { files,get reads(){return reads}, get saves() { return saves }, race(action: () => void) { race = action } }
 }
 const person = (workspace: Workspace) => workspace.worlds[0].documents.find(d => d.id === 'people')!
 test('startup reads Markdown over cached JSON and refresh imports external changes', async () => {
@@ -121,60 +127,27 @@ test('startup reads Markdown over cached JSON and refresh imports external chang
   const refreshed = await refreshWorkspace(loaded)
   assert.equal(value(person(refreshed), '人物喜好'), '外部编辑')
 })
-test('save re-reads and merges external edits; changes made while awaiting save remain in UI', async () => {
-  const { workspace, world } = fixture(), disk = mockDisk(workspace)
-  const loaded = await loadWorkspace(); await saveWorkspace(loaded)
-  const local = edit(loaded, '人物性格', '界面编辑')
-  disk.files[world.id]['人物列表.md'] = documentMarkdown(person(edit(loaded, '人物喜好', '外部编辑')))
-  const saved = await saveWorkspace(local)
-  assert.equal(value(person(saved), '人物性格'), '界面编辑')
-  assert.equal(value(person(saved), '人物喜好'), '外部编辑')
-  assert.equal(value(person(applySyncResult(local, edit(local, '人物性格', '继续输入'), saved)), '人物性格'), '继续输入')
+test('explicit saves never read or merge Markdown, even broken files; refresh alone imports it',async()=>{
+ const {workspace,world}=fixture(),disk=mockDisk(workspace),loaded=await loadWorkspace()
+ const local=edit(loaded,'人物性格','界面编辑'),reads=disk.reads
+ disk.files[world.id]['人物列表.md']='broken external content'
+ const saved=await saveWorkspace(local)
+ assert.equal(disk.reads,reads)
+ assert.match(disk.files[world.id]['人物列表.md']!,/界面编辑/)
+ assert.equal(value(person(applySyncResult(local,edit(local,'人物性格','继续输入'),saved)),'人物性格'),'继续输入')
+ disk.files[world.id]['人物列表.md']=documentMarkdown(person(edit(loaded,'人物性格','磁盘新版')))
+ const refreshed=await refreshWorkspace(local)
+ assert.equal(value(person(refreshed),'人物性格'),'磁盘新版')
+ assert.ok(disk.reads>reads)
+ disk.files[world.id]['人物列表.md']='broken'
+ await assert.rejects(refreshWorkspace(refreshed),/未覆盖磁盘文件/)
 })
-test('same-property conflict and malformed external file never overwrite the disk', async () => {
-  const { workspace, world } = fixture(), disk = mockDisk(workspace)
-  const loaded = await loadWorkspace(); await saveWorkspace(loaded)
-  const local = edit(loaded, '人物性格', '界面'), external = documentMarkdown(person(edit(loaded, '人物性格', '磁盘')))
-  disk.files[world.id]['人物列表.md'] = external
-  const before = disk.saves
-  await assert.rejects(saveWorkspace(local), MarkdownConflictError)
-  assert.equal(disk.saves, before); assert.equal(disk.files[world.id]['人物列表.md'], external)
-  clearMarkdownConflict()
-  disk.files[world.id]['人物列表.md'] = 'malformed markdown'
-  await assert.rejects(saveWorkspace(local), /未覆盖磁盘文件/)
-  assert.equal(disk.saves, before)
-})
-test('a disk change between read and write retries with new contents', async () => {
-  const { workspace, world } = fixture(), disk = mockDisk(workspace)
-  const loaded = await loadWorkspace(); await saveWorkspace(loaded)
-  disk.race(() => { disk.files[world.id]['人物列表.md'] = documentMarkdown(person(edit(loaded, '人物喜好', '写入前最后一刻')) ) })
-  const saved = await saveWorkspace(edit(loaded, '人物性格', '本地'))
-  assert.equal(value(person(saved), '人物喜好'), '写入前最后一刻')
-  assert.equal(value(person(saved), '人物性格'), '本地')
-})
-test('queued saves cannot bypass a conflict; a queued save also detects changes discovered by refresh', async () => {
-  const { workspace, world } = fixture(), disk = mockDisk(workspace)
-  const loaded = await loadWorkspace(); await saveWorkspace(loaded)
-  disk.files[world.id]['人物列表.md'] = documentMarkdown(person(edit(loaded, '人物性格', '外部')))
-  const attempts = await Promise.allSettled([saveWorkspace(edit(loaded, '人物性格', '本地一')), saveWorkspace(edit(loaded, '人物性格', '本地二'))])
-  assert.ok(attempts.every(result => result.status === 'rejected' && result.reason instanceof MarkdownConflictError))
-  clearMarkdownConflict()
-  const current = await loadWorkspace(); await saveWorkspace(current)
-  disk.files[world.id]['人物列表.md'] = documentMarkdown(person(edit(current, '人物性格', '外部再次编辑')))
-  const results = await Promise.allSettled([refreshWorkspace(current), saveWorkspace(edit(current, '人物性格', '正在输入'))])
-  assert.equal(results[0].status, 'fulfilled')
-  assert.equal(results[1].status, 'rejected')
-  assert.equal(value(parseDocumentMarkdown(disk.files[world.id]['人物列表.md']!, person(current), world), '人物性格'), '外部再次编辑')
-})
-test('an explicitly confirmed import can repair invalid disk content', async () => {
-  const { workspace, world } = fixture(), disk=mockDisk(workspace,'broken file')
-  const loaded=await loadWorkspace()
-  await assert.rejects(saveWorkspace(loaded), /未覆盖磁盘文件/)
-  const imported=edit(loaded,'人物性格','重新导入')
-  replaceDocumentFromImport(world.id,'people')
-  const saved=await saveWorkspace(imported)
-  assert.equal(value(person(saved),'人物性格'),'重新导入')
-  assert.match(disk.files[world.id]['人物列表.md']!,/重新导入/)
+test('queued saves write their submitted snapshots in order without disk merges',async()=>{
+ const {workspace,world}=fixture(),disk=mockDisk(workspace),loaded=await loadWorkspace(),reads=disk.reads
+ disk.race(()=>{disk.files[world.id]['人物列表.md']='external change'})
+ await Promise.all([saveWorkspace(edit(loaded,'人物性格','一')),saveWorkspace(edit(loaded,'人物性格','二'))])
+ assert.equal(disk.reads,reads)
+ assert.match(disk.files[world.id]['人物列表.md']!,/二/)
 })
 test('model settings and chat selection survive simultaneous external Markdown updates',async()=>{
   const {workspace,world}=fixture(),disk=mockDisk(workspace)
@@ -191,21 +164,210 @@ test('model settings and chat selection survive simultaneous external Markdown u
   assert.deepEqual(saved.functions,local.functions)
   assert.deepEqual(saved.pluginFolders,local.pluginFolders)
   assert.equal(saved.worlds[0].chat.modelId,'connection')
-  assert.equal(value(person(saved),'人物性格'),'外部修改')
+  assert.equal(value(person(saved),'人物性格'),value(person(local),'人物性格'))
 })
 
 
-test('view JSON reloads, merges independent edits and rejects conflicting or malformed configuration',async()=>{
+test('view configuration is imported only on refresh, with malformed refresh rejected',async()=>{
+ const {workspace,world}=fixture(),disk=mockDisk(workspace),loaded=await loadWorkspace()
+ await saveWorkspace(loaded)
+ const id=world.nodes.find(n=>n.viewType==='graph')!.id,file=loaded.worlds[0].views![id].fileName
+ const local=structuredClone(loaded);local.worlds[0].views![id].graph.showDomains=false
+ const remote=structuredClone(loaded.worlds[0].views![id]);remote.name='外部图'
+ disk.files[world.id][file]=JSON.stringify(remote)
+ const saved=await saveWorkspace(local)
+ assert.equal(saved.worlds[0].views![id].name,local.worlds[0].views![id].name)
+ disk.files[world.id][file]=JSON.stringify(remote)
+ const fresh=await refreshWorkspace(saved)
+ assert.equal(fresh.worlds[0].views![id].name,'外部图')
+ disk.files[world.id][file]='broken';const count=disk.saves
+ await assert.rejects(refreshWorkspace(fresh),/未覆盖磁盘文件/);assert.equal(disk.saves,count)
+})
+test('unknown nested subtrees and unbound functions are ignored without altering schema',()=>{
+  const {doc,world}=fixture(),source=documentMarkdown(doc).replace('### 人物势力','### 人物势力\n\n#### 未配置属性\n\n忽略内容\n\n##### 嵌套未知项\n\n42\n').replace('### 人物性格\n\n谨慎','### 人物性格\n\n谨慎\n\n#### [未绑定函数](../../functions/unknown.js)\n\n忽略结果')
+  const parsed=parseDocumentMarkdown(source,doc,world)
+  assert.deepEqual(parsed.schema,doc.schema)
+  assert.deepEqual(parsed.entities,doc.entities)
+  assert.deepEqual(doc.schema,world.documents.find(d=>d.id===doc.id)!.schema)
+})
+
+
+test('manual refresh replaces the selected draft from disk, preserves other drafts and never saves',async()=>{
+ const {reloadCreationFile}=await import('../src/services/storage')
+ const {saveProjection}=await import('../src/model/manualSave')
  const {workspace,world}=fixture(),disk=mockDisk(workspace)
  const loaded=await loadWorkspace();await saveWorkspace(loaded)
- const id=world.nodes.find(n=>n.viewType==='graph')!.id,file=loaded.worlds[0].views![id].fileName
- const remote=structuredClone(loaded.worlds[0].views![id]);remote.name='外部图';disk.files[world.id][file]=JSON.stringify(remote)
- const local=structuredClone(loaded);local.worlds[0].views![id].graph.showDomains=false
- const saved=await saveWorkspace(local)
- assert.equal(saved.worlds[0].views![id].name,'外部图');assert.equal(saved.worlds[0].nodes.find(n=>n.id===id)?.name,'外部图');assert.equal(saved.worlds[0].views![id].graph.showDomains,false)
- const changed=structuredClone(saved.worlds[0].views![id]);changed.name='远端';disk.files[world.id][file]=JSON.stringify(changed)
- const competing=structuredClone(saved);competing.worlds[0].views![id].name='本地'
- await assert.rejects(saveWorkspace(competing),MarkdownConflictError)
- clearMarkdownConflict();disk.files[world.id][file]='broken';const count=disk.saves
- await assert.rejects(saveWorkspace(saved),/未覆盖磁盘文件/);assert.equal(disk.saves,count)
+ let local=edit(loaded,'人物性格','未保存草稿')
+ local={...local,worlds:local.worlds.map(w=>({...w,documents:w.documents.map(d=>d.id==='relations'?{...d,name:'未保存关系类型名'}:d)}))}
+ disk.files[world.id][person(loaded).fileName]=documentMarkdown(person(edit(loaded,'人物性格','磁盘新版')))
+ const count=disk.saves,refreshed=await reloadCreationFile(local,{worldId:world.id,kind:'document',id:'people'})
+ assert.equal(value(person(refreshed),'人物性格'),'磁盘新版')
+ assert.equal(refreshed.worlds[0].documents.find(d=>d.id==='relations')!.name,'未保存关系类型名')
+ assert.equal(disk.saves,count)
+ const submitted=saveProjection(refreshed,loaded,{worldId:world.id,kind:'document',id:'people'})
+ await saveWorkspace(submitted)
+ assert.equal(disk.saves,count+1)
+})
+
+test('preferences persistence cannot consume an unsaved import or overwrite its broken disk file',async()=>{
+ const {saveProjection}=await import('../src/model/manualSave')
+ const {workspace,world}=fixture(),disk=mockDisk(workspace)
+ const loaded=await loadWorkspace();await saveWorkspace(loaded)
+ const file=person(loaded).fileName;disk.files[world.id][file]='broken file'
+ replaceDocumentFromImport(world.id,'people')
+ const imported=edit(loaded,'人物性格','有效导入'),count=disk.saves
+ const reads=disk.reads
+ await saveWorkspace(saveProjection(imported,loaded),[],'preferences')
+ assert.equal(disk.reads,reads)
+ assert.equal(disk.saves,count+1);assert.equal(disk.files[world.id][file],'broken file')
+ await saveWorkspace(imported,[`${world.id}/people`])
+ assert.match(disk.files[world.id][file],/有效导入/)
+})
+
+test('manual view refresh validates against the complete world class catalog and keeps document drafts',async()=>{
+ const {reloadCreationFile}=await import('../src/services/storage')
+ const {workspace,world}=fixture(),disk=mockDisk(workspace)
+ const loaded=await loadWorkspace();await saveWorkspace(loaded)
+ const view=Object.values(loaded.worlds[0].views!).find(v=>v.kind==='graph')!
+ const changed={...view,graph:{...view.graph,showLabels:false}}
+ disk.files[world.id][view.fileName]=JSON.stringify(changed)
+ const draft=edit(loaded,'人物性格','保留草稿'),count=disk.saves
+ const result=await reloadCreationFile(draft,{worldId:world.id,kind:'view',id:view.id})
+ assert.equal(result.worlds[0].views![view.id].graph.showLabels,false)
+ assert.equal(value(person(result),'人物性格'),'保留草稿');assert.equal(disk.saves,count)
+})
+
+test('native current-file save does not rewrite unrelated Markdown, schemas or view files',async()=>{
+ const {saveProjection}=await import('../src/model/manualSave')
+ const {workspace,world}=fixture(),disk=mockDisk(workspace)
+ const loaded=await loadWorkspace();await saveWorkspace(loaded)
+ const unrelated=loaded.worlds[0].documents.find(d=>d.id==='relations')!,schemaFile=unrelated.fileName.replace(/\.md$/i,'.schema.json')
+ disk.files[world.id][schemaFile]='external schema bytes left untouched'
+ const original=disk.files[world.id][unrelated.fileName]
+ const current=edit(loaded,'人物性格','只保存人物'),scope={worldId:world.id,kind:'document' as const,id:'people'}
+ await saveWorkspace(saveProjection(current,loaded,scope),[],scope)
+ assert.equal(disk.files[world.id][schemaFile],'external schema bytes left untouched')
+ assert.equal(disk.files[world.id][unrelated.fileName],original)
+ assert.match(disk.files[world.id][person(loaded).fileName],/只保存人物/)
+})
+
+test('disk repeated Class keys override stale JSON on startup, refresh and save',async()=>{
+ const world=createWorld('重复关系'),doc=world.documents.find(d=>d.id==='people')!
+ const workspace:Workspace={worlds:[world],activeWorldId:world.id}
+ const prefix='# 人物\n\n## 甲\n\n### 人物关系\n\n#### [乙](人物列表.md#%E4%B9%99)\n\n##### 关系\n\n'
+ const sister='###### [妹妹](关系类型.md#%E5%A6%B9%E5%A6%B9)'
+ const disk=mockDisk(workspace,prefix+sister+'\n')
+ const loaded=await loadWorkspace()
+ assert.deepEqual(person(loaded).schema,doc.schema)
+ assert.match(documentMarkdown(person(loaded)),/###### \[妹妹\]/)
+ disk.files[world.id]['人物列表.md']=prefix+sister+'\n\n###### [朋友](关系类型.md#%E6%9C%8B%E5%8F%8B)\n'
+ const {reloadCreationFile}=await import('../src/services/storage')
+ const refreshed=await reloadCreationFile(loaded,{worldId:world.id,kind:'document',id:'people'})
+ assert.match(documentMarkdown(person(refreshed)),/###### \[妹妹\]/)
+ assert.match(documentMarkdown(person(refreshed)),/###### \[朋友\]/)
+ await saveWorkspace(refreshed)
+ assert.match(disk.files[world.id]['人物列表.md']!,/###### \[妹妹\]/)
+ assert.match(disk.files[world.id]['人物列表.md']!,/###### \[朋友\]/)
+ disk.files[world.id]['人物列表.md']='invalid markdown'
+ await assert.rejects(loadWorkspace(),/未覆盖磁盘文件/)
+})
+
+test('disk source values are not rejected because a reused cached field belonged to a function',()=>{
+ const world=createWorld('来源'),template=world.documents.find(d=>d.id==='people')!
+ const prefix='# 人物\n## 甲\n### 人物关系\n#### [乙](人物列表.md#%E4%B9%99)\n##### 关系\n'
+ const previous=parseDocumentMarkdown(prefix+'###### [哥哥](关系类型.md#%E5%93%A5%E5%93%A5)\n',template,world)
+ const nested=previous.entities[0].fields.find(f=>f.key==='人物关系')!.children[0].children.find(f=>f.key==='关系')!.children[0]
+ nested.functionOrigin={functionId:'fn',name:'生成',bindingFieldId:'binding'}
+ const changed=prefix+'###### [妹妹](关系类型.md#%E5%A6%B9%E5%A6%B9)\n'
+ assert.throws(()=>parseDocumentMarkdown(changed,previous,world),/只读/)
+ const fresh=parseDocumentMarkdown(changed,previous,world,{enforceGeneratedReadOnly:false})
+ assert.match(documentMarkdown(fresh),/###### \[妹妹\]/)
+ assert.ok(!documentMarkdown(fresh).includes('function-origin'))
+})
+
+test('full Markdown comparison retains every current line and deleted baseline rows without truncation',async()=>{
+ const {lineDiff}=await import('../src/model/textDiff')
+ const before=Array.from({length:30},(_,i)=>`line ${i}`).join('\n')+'\n'
+ const after=before.replace('line 15','new 15')
+ const rows=lineDiff(before,after,true)
+ assert.equal(rows.filter(r=>r.after!==undefined).map(r=>r.text).join('\n'),after)
+ assert.ok(rows.some(r=>r.kind==='remove'&&r.text==='line 15'))
+ assert.ok(rows.some(r=>r.kind==='add'&&r.text==='new 15'))
+ assert.equal(lineDiff(before,before,true).length,31)
+ assert.ok(!rows.some(r=>r.kind==='gap'))
+ assert.ok(lineDiff(before,after).length<rows.length)
+})
+
+test('name-only generated markers reload disk values over JSON and only explicit save writes Markdown',async()=>{
+ const world=createWorld('来源 JSON'),fn={id:'generate',name:'生成',language:'js' as const,apiVersion:2 as const,executionMode:'void' as const,code:'function transform(self,input){input.add("notes",values.text("重新计算"));}'}
+ const doc=world.documents.find(d=>d.id==='people')!
+ doc.schema=[{id:'root',key:'内容',keyType:'Const',valueType:'Object',functionIds:[fn.id],children:[{id:'notes',key:'注释',keyType:'Const',valueType:'Text',repeatable:true}]}]
+ doc.entities=[{id:'a',name:'甲',fields:[{id:'root-value',schemaId:'root',key:'内容',value:'',children:[{id:'user',schemaId:'notes',key:'注释',value:'用户',children:[]},{id:'generated',schemaId:'notes',key:'注释',value:'旧 JSON',children:[],functionOrigin:{functionId:fn.id,name:fn.name,bindingFieldId:'root-value'}}]}]}]
+ const workspace:Workspace={worlds:[world],activeWorldId:world.id,functions:[fn]},disk=mockDisk(workspace,documentMarkdown(doc).replace('旧 JSON','磁盘正文'))
+ let state=await loadWorkspace()
+ assert.equal(person(state).entities[0].fields[0].children[1].value,'磁盘正文')
+ const source=disk.files[world.id][doc.fileName]!,count=disk.saves
+ disk.files[world.id][doc.fileName]=source.replace('磁盘正文','外部新版')
+ const {reloadCreationFile}=await import('../src/services/storage')
+ state=await reloadCreationFile(state,{worldId:world.id,kind:'document',id:doc.id})
+ assert.equal(person(state).entities[0].fields[0].children[1].value,'外部新版')
+ const detach=bindScriptHost({autoSave:false,get:()=>state,update:change=>{state=change(state)}})
+ try{
+  const {functionJobs,runFunctionValue}=await import('../src/services/functions')
+  for(let i=0;i<2;i++){const job=functionJobs(state,true)[0];await runFunctionValue(fn,job.input,state.worlds[0],job.context,undefined,job)}
+  const fields=person(state).entities[0].fields[0].children
+  assert.deepEqual(fields.map(f=>f.value),['用户','重新计算'])
+  assert.equal(fields[1].id,'generated')
+  assert.equal(disk.saves,count)
+  assert.match(disk.files[world.id][doc.fileName]!,/外部新版/)
+  state=await saveWorkspace(state)
+  assert.match(disk.files[world.id][doc.fileName]!,/重新计算/)
+  assert.doesNotMatch(disk.files[world.id][doc.fileName]!,/function-sources|function-origin/)
+  const {reconcileFunctionBindings}=await import('../src/model/functionAppend')
+  const unbound=structuredClone(state);person(unbound).schema[0].functionIds=[]
+  assert.deepEqual(person(reconcileFunctionBindings(unbound)).entities[0].fields[0].children.map(f=>f.value),['用户'])
+ }finally{detach()}
+})
+
+test('configuration refresh reads JSON only and preserves world drafts',async()=>{
+ const {workspace,world}=fixture(),disk=mockDisk(workspace),loaded=await loadWorkspace()
+ const local=edit(loaded,'人物性格','未保存'),reads=disk.reads,saves=disk.saves
+ local.models=[{id:'new',name:'未保存模型',model:'x',baseUrl:'http://localhost',apiKey:'',enabled:true}]
+ disk.files[world.id]['人物列表.md']='broken external markdown'
+ const {reloadPreferences}=await import('../src/services/storage')
+ const refreshed=await reloadPreferences(local)
+ assert.deepEqual(refreshed.models,loaded.models)
+ assert.equal(value(person(refreshed),'人物性格'),'未保存')
+ assert.equal(disk.reads,reads);assert.equal(disk.saves,saves)
+})
+
+test('attribute configuration autosave never reads or writes Markdown, and refresh imports newly declared members',async()=>{
+ const {workspace,world}=fixture(),disk=mockDisk(workspace),loaded=await loadWorkspace()
+ const {saveAttributeConfig,reloadCreationFile,savedWorkspace}=await import('../src/services/storage')
+ const file=person(loaded).fileName,source=documentMarkdown(person(loaded)).replace('### 人物性格','### 新增说明\n\n用户直接写入的内容\n\n### 人物性格')
+ disk.files[world.id][file]=source
+ const draft=edit(loaded,'人物性格','未保存正文')
+ person(draft).schema.push({id:'new-note',key:'新增说明',keyType:'Const',valueType:'Text'})
+ const reads=disk.reads
+ await saveAttributeConfig(draft,world.id,'people')
+ assert.equal(disk.reads,reads);assert.equal(disk.files[world.id][file],source)
+ assert.equal(value(person(savedWorkspace()!),'人物性格'),value(person(loaded),'人物性格'))
+ assert.ok(person(savedWorkspace()!).schema.some(f=>f.id==='new-note'))
+ await saveWorkspace({...loaded,models:[]},[],'preferences')
+ assert.ok(person(savedWorkspace()!).schema.some(f=>f.id==='new-note'))
+ assert.equal(disk.files[world.id][file],source)
+ const refreshed=await reloadCreationFile(draft,{worldId:world.id,kind:'document',id:'people'})
+ assert.equal(value(person(refreshed),'新增说明'),'用户直接写入的内容')
+ assert.ok(person(refreshed).schema.some(f=>f.id==='new-note'))
+ assert.equal(disk.files[world.id][file],source)
+})
+
+test('duplicate instance errors identify every conflicting name once',()=>{
+ const {doc,world}=fixture()
+ assert.throws(()=>parseDocumentMarkdown('# 人物\n## 甲\n## 乙\n## 甲\n## 丙\n## 乙\n## 甲\n',doc,world),error=>{
+  assert.ok(error instanceof Error)
+  assert.match(error.message,/实例名称重复：“甲”、“乙”/)
+  assert.equal((error.message.match(/“甲”/g)||[]).length,1)
+  assert.ok(!error.message.includes('“丙”'));return true
+ })
 })

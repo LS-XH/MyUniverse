@@ -18,11 +18,11 @@ test('workflow rejects cycles and invalid ports before execution',()=>{
   assert.throws(()=>connectWorkflow(graph,{from:a.id,output:'missing',to:b.id,input:'a'}),/端口/)
 })
 test('agent executes shared LLM source once and commits only its local variables',async()=>{
-  const agent=createAgent(),graph=agentGraph(),input=graph.nodes[0],llm=graph.nodes[1],out=graph.nodes[2],set=workflowNode('setVariable');llm.settings.modelId='llm';set.settings.name='last'
+  const agent=createAgent(),graph=agentGraph(),input=graph.nodes[0],llm=graph.nodes[1],out=graph.nodes[2],set=workflowNode('setVariable');llm.settings.modelId='llm';set.settings.name='last';const initial=structuredClone(agent.variables)
   agent.graph={...graph,nodes:[input,llm,set,out],links:[...graph.links,link(llm.id,set.id,'value'),link(set.id,out.id,'after')]}
   let calls=0
   const output=await runAgent(agent,'hello',workspace,undefined,undefined,undefined,{llm:async(_,messages)=>{calls++;assert.deepEqual(messages,[{role:'user',content:'hello'}]);return 'answer'}})
-  assert.equal(calls,1);assert.equal(output.value,'answer');assert.equal(output.variables.last,'answer');assert.deepEqual(agent.variables,{})
+  assert.equal(calls,1);assert.equal(output.value,'answer');assert.equal(output.variables.last,'answer');assert.deepEqual(agent.variables,initial)
 })
 test('explicit context uses scoped history and no hidden LLM state',async()=>{
   const agent=createAgent(),input=workflowNode('input'),get=workflowNode('getVariable'),context=workflowNode('context'),llm=workflowNode('llm'),out=workflowNode('return');llm.settings={modelId:'llm',systemPrompt:'write'};context.settings.limit='2'
@@ -83,8 +83,8 @@ test('LLM discovery and generation use compatible HTTP responses without live pr
 test('legacy workspace normalization adds workflow collections without replacing existing model IDs',()=>{
   const migrated=normalizeWorkspace(workspace);assert.deepEqual(migrated.sdWorkflows,[]);assert.deepEqual(migrated.agents,[]);assert.equal(migrated.models![0].id,'llm')
 })
-test('Agent Tool selects registered configuration and rejects disabled tools',async()=>{
-  const agent=createAgent(),input=workflowNode('input'),tool=workflowNode('tool'),out=workflowNode('return');tool.settings.toolId='tool'
+test('legacy Agent HTTP Tool keeps untyped parameters and rejects disabled tools',async()=>{
+  const agent=createAgent(),input=workflowNode('input'),tool=workflowNode('tool'),out=workflowNode('return');tool.settings.toolId='tool';tool.inputs=[{name:'input',type:'ANY',default:''}];tool.outputs=[{name:'value',type:'ANY'}]
   agent.graph={version:1,nodes:[input,tool,out],links:[link(input.id,tool.id,'input'),link(tool.id,out.id,'value')]}
   const config:Workspace={...workspace,tools:[{id:'tool',name:'tool',url:'https://tool.invalid/run',method:'POST',apiKey:'dummy',enabled:true,bodyMode:'input'}]}
   const output=await runAgent(agent,'hello',config,undefined,undefined,undefined,{http:async(request)=>{assert.equal(request.url,'https://tool.invalid/run');assert.deepEqual(request.body,{input:'hello'});return {answer:'ok'} as any}})

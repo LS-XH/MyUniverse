@@ -12,12 +12,12 @@ export function parseFunctionLink(key:string): {name:string;fileName:string;func
 }
 export function createFunction(items:FunctionScript[],language:FunctionLanguage='js'):FunctionScript {
   let name='新函数',n=2;while(items.some(fn=>fn.name===name))name=`新函数${n++}`
-  return {id:uid(),name,language,apiVersion:2,returnType:{type:'Text'},code:language==='js'?'function transform(self, input) {\n  return values.text(String(input.value() ?? ""));\n}\n':language==='py'?'def transform(self, input):\n    return values.text(str(input.value() or ""))\n':'',...(language==='flow'?{flow:createFlow()}: {})}
+  return {id:uid(),name,language,apiVersion:2,executionMode:'void',code:language==='js'?'function transform(self, input) {\n  // input.add("可重复属性的 Schema ID", values.text("新增内容"));\n}\n':language==='py'?'def transform(self, input):\n    # input.add("可重复属性的 Schema ID", values.text("新增内容"))\n    pass\n':'',...(language==='flow'?{flow:createFlow()}: {})}
 }
-export function functionRevision(fn:FunctionScript,world?:World):string {
+export function functionRevision(fn:FunctionScript,world?:World,worldRevision:()=>string=()=>rawWorldRevision(world)):string {
   const code=fn.language==='flow'?JSON.stringify({...fn.flow,nodes:fn.flow?.nodes.map(({x:_x,y:_y,...node})=>node)}):fn.code
   const usesWorld=fn.language==='flow'?fn.flow?.nodes.some(n=>n.type==='entityMarkdown'||n.type==='memberMarkdown'||n.type==='code'&&/\bworld\b/.test(n.code||'')):/\bworld\b/.test(fn.code)
-  return code+(fn.apiVersion===2?`\ncontract:${JSON.stringify(fn.returnType)}\napi:2`:'')+(usesWorld||fn.apiVersion===2?`\nworld:${rawWorldRevision(world)}`:'')
+  return 'add-void-v1\n'+code+(fn.executionMode==='void'?'\nvoid':'')+(fn.apiVersion===2?`\ncontract:${JSON.stringify(fn.returnType)}\napi:2`:'')+(fn.executionMode!=='void'&&(usesWorld||fn.apiVersion===2)?`\nworld:${worldRevision()}`:'')
 }
 export function referenceBase(value:string):string {return value.match(/^\[[^\]]*\]\([^\n)]+#[^\n)]+\)/)?.[0]||value}
 export function functionReferenceIdentity(value:string):string {
@@ -35,9 +35,9 @@ export function resolveFunctionReference(world:World,value:string):string {
   const visit=(fields:FieldValue[]):string|undefined=>{for(const f of fields){if(f.id===match[2]){const result=f.functionResults?.find(r=>r.functionId===fn?.functionId&&!r.error);if(result)return result.value}const nested=visit(f.children);if(nested!==undefined)return nested}return undefined}
   return visit(entity.fields)??value
 }
-export function functionInput(field:FieldValue,schema:FieldSchema,world?:World):string {
-  if(schema.valueType!=='Object')return world&&schema.valueType==='Class'?resolveFunctionReference(world,field.value):field.value
-  const serialize=(fields:FieldValue[]):unknown=>fields.map(f=>({key:f.key,value:f.value,children:serialize(f.children)}))
+export function functionInput(field:FieldValue,schema:FieldSchema,_world?:World):string {
+  if(schema.valueType!=='Object')return schema.valueType==='Class'?referenceBase(field.value):field.value
+  const serialize=(fields:FieldValue[]):unknown=>fields.filter(f=>!f.functionOrigin).map(f=>({key:f.key,value:f.value,children:serialize(f.children)}))
   return JSON.stringify(serialize(field.children))
 }
 export function fieldFunctions(world:World,entityId:string):{field:FieldValue;schema:FieldSchema;label:string}[] {
@@ -54,7 +54,7 @@ export function fieldFunctions(world:World,entityId:string):{field:FieldValue;sc
 export function deleteFunction(workspace:Workspace,id:string):Workspace {
   const clearReference=(value:string)=>functionReferenceIdentity(value).startsWith(`${id}/`)?referenceBase(value):value
   const schemas=(items:FieldSchema[]):FieldSchema[]=>items.map(s=>({...s,...(s.functionIds?{functionIds:s.functionIds.filter(x=>x!==id)}:{}),...(s.children?{children:schemas(s.children)}:{})}))
-  const fields=(items:FieldValue[]):FieldValue[]=>items.map(f=>({...f,key:clearReference(f.key),value:clearReference(f.value),children:fields(f.children),...(f.functionResults?{functionResults:f.functionResults.filter(r=>r.functionId!==id)}:{})}))
+  const fields=(items:FieldValue[]):FieldValue[]=>items.filter(f=>f.functionOrigin?.functionId!==id).map(f=>({...f,functionRuns:f.functionRuns?.filter(r=>r.functionId!==id),key:clearReference(f.key),value:clearReference(f.value),children:fields(f.children),...(f.functionResults?{functionResults:f.functionResults.filter(r=>r.functionId!==id)}:{})}))
   const styles=(items:World['graph']['lineStyles'])=>Object.fromEntries(Object.entries(items).map(([key,style])=>[key,style.labelSource&&functionReferenceIdentity(style.labelSource).startsWith(`${id}/`)?{...style,labelSource:undefined}:style]))
   return {...workspace,functions:workspace.functions?.filter(fn=>fn.id!==id),worlds:workspace.worlds.map(w=>({...w,graph:{...w.graph,lineStyles:styles(w.graph.lineStyles),domainStyles:styles(w.graph.domainStyles)},documents:w.documents.map(d=>({...d,schema:schemas(d.schema),entities:d.entities.map(e=>({...e,fields:fields(e.fields)}))}))}))}
 }

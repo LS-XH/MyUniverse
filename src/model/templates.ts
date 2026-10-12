@@ -6,7 +6,7 @@ export function createWorld(name: string): World {
   const people = 'people', relations = 'relations', factions = 'factions', places = 'places', events = 'events'
   const docs: ClassDocument[] = [
     { id: people, name: '人物', fileName: '人物列表.md', protected: true, entities: [], schema: [
-      f('人物关系', 'Object', [list('人物', 'Object', [f('关系', 'Class', undefined, {classId:relations}), f('人物关系小故事', 'Object', [list('人物关系小故事名称', 'Content')])], {keyType:'Class',classId:people})]),
+      f('人物关系', 'Object', [list('人物', 'Object', [f('关系', 'Object', [list('关系', 'Null', undefined, {keyType:'Class',classId:relations})]), f('人物关系小故事', 'Object', [list('人物关系小故事名称', 'Content')])], {keyType:'Class',classId:people})]),
       f('人物势力','Object',[f('势力名称','Class',undefined,{classId:factions}),f('势力地位','Text')]), f('人物性格','Text'), f('人物喜好','Text')
     ]},
     { id: relations, name: '关系', fileName: '关系类型.md', protected: true, entities: [], schema: [f('关系描述','Text'),f('关系推理','Object',[list('关系','Class',undefined,{keyType:'Class',classId:relations})])]},
@@ -19,9 +19,9 @@ export function createWorld(name: string): World {
   const worldView=add('世界观','collection',null), peopleView=add('人物','collection',null), eventView=add('事件','collection',null)
   add('章节','collection',null); add('插图','collection',null)
   const file = (name:string,parentId:string,classId:string) => add(name,'file',parentId,{classId})
-  file('势力列表',worldView,factions);file('地点列表',worldView,places)
-  file('人物列表',peopleView,people);add('关系网','view',peopleView,{viewType:'graph'});file('关系类型',peopleView,relations)
+  file('势力列表',worldView,factions);const placesFile=file('地点列表',worldView,places)
+  const peopleFile=file('人物列表',peopleView,people);add('人物关系网','view',peopleFile,{viewType:'graph'});const relationsFile=file('关系类型',peopleView,relations);add('关系类型网','view',relationsFile,{viewType:'relationGraph',classId:relations})
   file('事件列表',eventView,events)
-  add('地图视图','view',worldView,{viewType:'map'});add('聊天框','view',null,{viewType:'chat'})
+  add('地图视图','view',placesFile,{viewType:'map'});add('聊天框','view',null,{viewType:'chat'})
   return normalizeViews({id:uid(),name,nodes,documents:docs,graph:{positions:{},lineStyles:{},domainStyles:{},showDomains:true},map:{image:'',legend:''},chat:{agent:'',files:[],skills:[],conversations:[],activeConversationId:null}})
 }

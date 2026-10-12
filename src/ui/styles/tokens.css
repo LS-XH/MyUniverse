@@ -1,0 +1,42 @@
+:root {
+  --ui-radius-10: 10px;
+  --ui-radius-12: 12px;
+  --ui-radius-3: 3px;
+  --ui-radius-7: 7px;
+  --ui-radius-8: 8px;
+  --ui-radius-9: 9px;
+  --ui-radius-6: 6px;
+  --ui-radius-14: 14px;
+  --ui-radius-15: 15px;
+  --ui-radius-11: 11px;
+  --ui-radius-4: 4px;
+  --ui-shadow-8: #0008;
+  --ui-radius-5: 5px;
+  --ui-radius-20: 20px;
+  --ui-radius-16: 16px;
+  --ui-shadow-4: #0004;
+  --ui-shadow-5: #0005;
+  --ui-radius-32: 32px;
+  --ui-shadow-9: #0009;
+  --ui-duration-180: 180ms;
+  --ui-duration-160: .16s;
+  --ui-duration-200: .2s;
+  --ui-duration-140: .14s;
+  --ui-shadow-6: #0006;
+  --ui-radius-17: 17px;
+  --ui-radius-18: 18px;
+  --ui-shadow-2: #0002;
+  --ui-duration-280: .28s;
+  --ui-shadow-3: #0003;
+  --ui-duration-220: 220ms;
+  --ui-shadow-1: #0001;
+  --ui-duration-150: .15s;
+  --ui-duration-120: .12s;
+  --ui-duration-240: .24s;
+  --ui-duration-300: .3s;
+  --ui-shadow-18: #00000018;
+  --ui-shadow-0c: #0000000c;
+  --ui-duration-260: .26s;
+}
+
+:root { --ui-scrim: #050810b9; }

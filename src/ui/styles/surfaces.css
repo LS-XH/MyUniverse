@@ -1,0 +1,46 @@
+:where(.ui-surface) {
+  --ui-bg: initial;
+  --ui-fg: initial;
+  --ui-radius: initial;
+  --ui-shadow: initial;
+  --ui-border-width: initial;
+  --ui-border-style: initial;
+  --ui-border-color: initial;
+  --ui-border-top-width: initial;
+  --ui-border-top-style: initial;
+  --ui-border-top-color: initial;
+  --ui-border-right-width: initial;
+  --ui-border-right-style: initial;
+  --ui-border-right-color: initial;
+  --ui-border-bottom-width: initial;
+  --ui-border-bottom-style: initial;
+  --ui-border-bottom-color: initial;
+  --ui-border-left-width: initial;
+  --ui-border-left-style: initial;
+  --ui-border-left-color: initial;
+}
+.ui-surface {
+  background-color: var(--ui-bg, revert);
+  color: var(--ui-fg, revert);
+  border-radius: var(--ui-radius, revert);
+  box-shadow: var(--ui-shadow, revert);
+  border-top-width: var(--ui-border-top-width, var(--ui-border-width, revert));
+  border-top-style: var(--ui-border-top-style, var(--ui-border-style, revert));
+  border-top-color: var(--ui-border-top-color, var(--ui-border-color, revert));
+  border-right-width: var(--ui-border-right-width, var(--ui-border-width, revert));
+  border-right-style: var(--ui-border-right-style, var(--ui-border-style, revert));
+  border-right-color: var(--ui-border-right-color, var(--ui-border-color, revert));
+  border-bottom-width: var(--ui-border-bottom-width, var(--ui-border-width, revert));
+  border-bottom-style: var(--ui-border-bottom-style, var(--ui-border-style, revert));
+  border-bottom-color: var(--ui-border-bottom-color, var(--ui-border-color, revert));
+  border-left-width: var(--ui-border-left-width, var(--ui-border-width, revert));
+  border-left-style: var(--ui-border-left-style, var(--ui-border-style, revert));
+  border-left-color: var(--ui-border-left-color, var(--ui-border-color, revert));
+}
+
+/* Opt-in common frame; variants only override its color or individual sides. */
+:where(.ui-surface--bordered) {
+  --ui-border-width: 1px;
+  --ui-border-style: solid;
+  --ui-border-color: var(--border);
+}

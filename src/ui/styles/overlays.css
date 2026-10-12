@@ -1,0 +1,276 @@
+/* Shared overlays family and its visual variants. */
+:where(.ui-dialog--themed) {
+  --ui-bg: var(--panel);
+}
+:where(.ui-dialog--text) {
+  --ui-fg: var(--text);
+}
+:where(.ui-drawer--themed) {
+  --ui-bg: var(--panel);
+}
+:where(.ui-drawer--text) {
+  --ui-fg: var(--text);
+}
+.ui-drawer--inspector {
+  --ui-border-left-width: 1px;
+  --ui-border-left-style: solid;
+}
+.ui-dialog--standard {
+  --ui-border-top-width: 1px;
+  --ui-border-top-style: solid;
+  --ui-border-right-width: 1px;
+  --ui-border-right-style: solid;
+  --ui-border-bottom-width: 1px;
+  --ui-border-bottom-style: solid;
+  --ui-border-left-width: 1px;
+  --ui-border-left-style: solid;
+  --ui-radius: var(--ui-radius-14);
+  --ui-shadow: 0 20px 60px var(--ui-shadow-9);
+}
+.ui-dialog--standard,
+.ui-drawer--inspector {
+  --ui-border-top-color: var(--border);
+  --ui-border-right-color: var(--border);
+  --ui-border-bottom-color: var(--border);
+  --ui-border-left-color: var(--border);
+}
+.ui-drawer--markdown {
+  --ui-border-top-width: 1px;
+  --ui-border-top-style: solid;
+  --ui-border-top-color: var(--border);
+  --ui-border-right-width: 1px;
+  --ui-border-right-style: solid;
+  --ui-border-right-color: var(--border);
+  --ui-border-bottom-width: 1px;
+  --ui-border-bottom-style: solid;
+  --ui-border-bottom-color: var(--border);
+  --ui-border-left-width: 1px;
+  --ui-border-left-style: solid;
+  --ui-border-left-color: var(--border);
+  --ui-radius: var(--ui-radius-14);
+  --ui-shadow: -8px 8px 32px var(--ui-shadow-3);
+  opacity: 0;
+  transform: translateX(calc(100% + 24px));
+  transition: transform var(--ui-duration-280) cubic-bezier(.22,.8,.25,1),opacity var(--ui-duration-220) ease,visibility 0s var(--ui-duration-280);
+}
+.ui-drawer--markdown.is-open {
+  opacity: 1;
+  transform: translateX(0);
+  transition: transform var(--ui-duration-280) cubic-bezier(.22,.8,.25,1),opacity var(--ui-duration-220) ease,visibility 0s;
+}
+.ui-drawer--inspector {
+  --ui-shadow: -8px 0 28px var(--ui-shadow-2);
+  opacity: 0;
+  transform: translateX(100%);
+  transition: transform var(--ui-duration-280) cubic-bezier(.22,.8,.25,1),opacity var(--ui-duration-220) ease,visibility 0s var(--ui-duration-280);
+}
+.ui-drawer--inspector.is-open {
+  opacity: 1;
+  transform: translateX(0);
+  transition: transform var(--ui-duration-280) cubic-bezier(.22,.8,.25,1),opacity var(--ui-duration-220) ease,visibility 0s;
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-drawer--markdown {
+    transition: none;
+  }
+  
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-drawer--inspector {
+    transition: none;
+  }
+  
+}
+.ui-drawer--library {
+  --ui-bg: var(--sidebar);
+  --ui-border-left-width: 1px;
+  --ui-border-left-style: solid;
+  --ui-border-left-color: var(--border);
+}
+.document-workspace .markdown-preview {
+  --ui-border-top-width: 0;
+  --ui-border-top-style: none;
+  --ui-border-top-color: currentColor;
+  --ui-border-right-width: 0;
+  --ui-border-right-style: none;
+  --ui-border-right-color: currentColor;
+  --ui-border-bottom-width: 0;
+  --ui-border-bottom-style: none;
+  --ui-border-bottom-color: currentColor;
+  --ui-border-left-width: 0;
+  --ui-border-left-style: none;
+  --ui-border-left-color: currentColor;
+  --ui-radius: 0;
+  --ui-shadow: none;
+  transform: none;
+  transition: width var(--ui-duration-280) cubic-bezier(.22,.8,.25,1),opacity var(--ui-duration-220) ease,visibility 0s var(--ui-duration-280);
+}
+.document-workspace .markdown-preview.is-open {
+  --ui-border-left-width: 1px;
+  --ui-border-left-style: solid;
+  --ui-border-left-color: var(--border);
+  transition: width var(--ui-duration-280) cubic-bezier(.22,.8,.25,1),opacity var(--ui-duration-220) ease,visibility 0s;
+}
+@media (prefers-reduced-motion:reduce) {
+  .document-workspace .markdown-preview {
+    transition: none;
+  }
+  
+}
+.ui-drawer--editor {
+  --ui-border-top-width: 1px;
+  --ui-border-top-style: solid;
+  --ui-border-top-color: var(--border);
+  --ui-border-right-width: 1px;
+  --ui-border-right-style: solid;
+  --ui-border-right-color: var(--border);
+  --ui-border-bottom-width: 1px;
+  --ui-border-bottom-style: solid;
+  --ui-border-bottom-color: var(--border);
+  --ui-border-left-width: 1px;
+  --ui-border-left-style: solid;
+  --ui-border-left-color: var(--border);
+  --ui-radius: var(--ui-radius-12);
+  --ui-shadow: 0 12px 40px var(--ui-shadow-5);
+  animation: editor-panel-in var(--ui-duration-180) ease-out;
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-drawer--editor {
+    animation: none;
+  }
+  
+}
+.flow-workbench .flow-library {
+  --ui-bg: var(--panel);
+  --ui-border-left-width: 1px;
+  --ui-border-left-style: solid;
+  --ui-border-left-color: var(--border);
+  --ui-shadow: -8px 0 28px var(--ui-shadow-2);
+  opacity: 0;
+  transform: translateX(100%);
+  transition: transform var(--ui-duration-280) cubic-bezier(.22,.8,.25,1),opacity var(--ui-duration-220) ease,visibility 0s var(--ui-duration-280);
+}
+.flow-workbench .flow-library.is-open {
+  opacity: 1;
+  transform: translateX(0);
+  transition: transform var(--ui-duration-280) cubic-bezier(.22,.8,.25,1),opacity var(--ui-duration-220) ease,visibility 0s;
+}
+@media (prefers-reduced-motion:reduce) {
+  .flow-workbench .flow-library {
+    transition: none;
+  }
+  
+}
+.ui-drawer--variable-pool {
+  --ui-border-top-width: 1px;
+  --ui-border-top-style: solid;
+  --ui-border-top-color: var(--border);
+  --ui-border-right-width: 1px;
+  --ui-border-right-style: solid;
+  --ui-border-right-color: var(--border);
+  --ui-border-bottom-width: 1px;
+  --ui-border-bottom-style: solid;
+  --ui-border-bottom-color: var(--border);
+  --ui-border-left-width: 1px;
+  --ui-border-left-style: solid;
+  --ui-border-left-color: var(--border);
+  --ui-radius: var(--ui-radius-12);
+  --ui-shadow: 0 10px 35px var(--ui-shadow-5);
+  transform: translateY(24px);
+  opacity: 0;
+  transition: transform var(--ui-duration-260) cubic-bezier(.22,.8,.25,1),opacity var(--ui-duration-220),visibility 0s var(--ui-duration-260);
+}
+.ui-drawer--variable-pool.is-open {
+  transform: translateY(0);
+  opacity: 1;
+  transition: transform var(--ui-duration-260) cubic-bezier(.22,.8,.25,1),opacity var(--ui-duration-220),visibility 0s;
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-drawer--variable-pool {
+    transition: none;
+  }
+  
+}
+.ui-drawer--workflow-library {
+  --ui-border-left-width: 1px;
+  --ui-border-left-style: solid;
+  --ui-border-left-color: var(--border);
+  transform: translateX(100%);
+  opacity: 0;
+  transition: transform var(--ui-duration-280) cubic-bezier(.22,.8,.25,1),opacity var(--ui-duration-220),visibility 0s var(--ui-duration-280);
+}
+.ui-drawer--workflow-library.is-open {
+  transform: translateX(0);
+  opacity: 1;
+  transition: transform var(--ui-duration-280) cubic-bezier(.22,.8,.25,1),opacity var(--ui-duration-220),visibility 0s;
+}
+.workflow-workbench .workflow-library-panel>.flow-library {
+  --ui-border-top-width: 0;
+  --ui-border-top-style: none;
+  --ui-border-top-color: currentColor;
+  --ui-border-right-width: 0;
+  --ui-border-right-style: none;
+  --ui-border-right-color: currentColor;
+  --ui-border-bottom-width: 0;
+  --ui-border-bottom-style: none;
+  --ui-border-bottom-color: currentColor;
+  --ui-border-left-width: 0;
+  --ui-border-left-style: none;
+  --ui-border-left-color: currentColor;
+  --ui-shadow: none;
+  transform: none;
+  opacity: 1;
+  transition: none;
+}
+.workflow-library-panel>.variable-pool {
+  --ui-border-right-width: 0;
+  --ui-border-right-style: none;
+  --ui-border-right-color: currentColor;
+  --ui-border-bottom-width: 0;
+  --ui-border-bottom-style: none;
+  --ui-border-bottom-color: currentColor;
+  --ui-border-left-width: 0;
+  --ui-border-left-style: none;
+  --ui-border-left-color: currentColor;
+  --ui-border-top-width: 1px;
+  --ui-border-top-style: solid;
+  --ui-border-top-color: var(--border);
+  --ui-radius: 0;
+  --ui-shadow: none;
+  transform: none;
+  opacity: 1;
+  transition: height var(--ui-duration-300) cubic-bezier(.22,.8,.25,1);
+}
+.workflow-library-panel>.variable-pool.is-open {
+  transform: none;
+}
+@media (prefers-reduced-motion:reduce) {
+  .ui-drawer--workflow-library {
+    transition: none;
+  }
+  
+}
+@media (prefers-reduced-motion:reduce) {
+  .workflow-library-panel>.variable-pool {
+    transition: none;
+  }
+  
+}
+@media (prefers-reduced-motion:reduce) {
+  .workflow-management-page .editor-drawer {
+    animation: none;
+  }
+  
+}
+
+/* Shared flat skin for the workflow's single dock. */
+.ui-drawer.ui-drawer--dock {
+  --ui-bg: var(--panel);
+  --ui-fg: var(--text);
+  --ui-border-width: 0;
+  --ui-border-style: solid;
+  --ui-border-color: var(--border);
+  --ui-border-left-width: 1px;
+  --ui-radius: 0;
+  --ui-shadow: none;
+}

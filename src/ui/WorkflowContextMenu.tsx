@@ -1,0 +1,9 @@
+import {useEffect,useRef} from 'react'
+import {Copy,ClipboardPaste,Scissors,Undo2,Redo2,Trash2,Scan,PanelRight,Settings2,Play,Tag} from 'lucide-react'
+export default function WorkflowContextMenu({position,selection,running,canUndo,canRedo,onClose,actions,disabledActions=[]}:{position:{x:number;y:number}|null;selection:boolean;running:boolean;canUndo:boolean;canRedo:boolean;onClose:()=>void;actions:Record<string,()=>void>;disabledActions?:string[]}){
+ const ref=useRef<HTMLDivElement>(null)
+ useEffect(()=>{if(!position)return;const close=(e:PointerEvent)=>{if(!ref.current?.contains(e.target as Node))onClose()},key=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose()};window.addEventListener('pointerdown',close);window.addEventListener('keydown',key);return()=>{window.removeEventListener('pointerdown',close);window.removeEventListener('keydown',key)}},[position])
+ if(!position)return null
+ const rows=[['copy','复制',Copy,!selection],['paste','粘贴',ClipboardPaste,running],['cut','剪切',Scissors,!selection||running],['delete','删除',Trash2,!selection||running],['undo','撤销',Undo2,!canUndo||running],['redo','重做',Redo2,!canRedo||running],['tag','添加标签',Tag,!selection||running],['fit','适应画布',Scan,false],['library','节点库',PanelRight,false],['settings','配置',Settings2,running],['run','运行',Play,running]] as const
+ return <div ref={ref} className="workflow-context-menu ui-menu--workflow ui-surface ui-menu ui-menu--themed ui-menu--text ui-surface--bordered" role="menu" style={{left:Math.max(8,Math.min(position.x,window.innerWidth-200)),top:Math.max(8,Math.min(position.y,window.innerHeight-360))}} onPointerDown={e=>e.stopPropagation()}>{rows.filter(([key])=>actions[key]).map(([key,label,Icon,disabled])=><button role="menuitem" key={key} disabled={disabled||disabledActions.includes(key)} onClick={()=>{actions[key]();onClose()}} className="ui-surface ui-button ui-menu-item"><Icon size={15}/>{label}</button>)}</div>
+}

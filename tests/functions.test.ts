@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createFunction, deleteFunction, functionInput, referenceBase, resolveFunctionReference } from '../src/model/functions'
+import { createFunction, deleteFunction, functionInput, functionRevision, referenceBase, resolveFunctionReference } from '../src/model/functions'
 import { applyFunctionResult, functionJobs } from '../src/services/functions'
 import { documentMarkdown, parseDocumentMarkdown } from '../src/model/markdown'
 import { ClassDocument, FunctionResult, Workspace } from '../src/model/types'
@@ -11,23 +11,24 @@ import { createWorldApi, worldCatalog } from '../src/model/worldApi'
 import { removeCollection } from '../src/model/collections'
 
 function fixture(){
-  const fn={...createFunction([]),apiVersion:undefined,returnType:undefined,id:'test-fn',name:'清理文本'},world=createWorld('函数世界')
+  const fn={...createFunction([]),executionMode:undefined,apiVersion:undefined,returnType:undefined,id:'test-fn',name:'清理文本'},world=createWorld('函数世界')
   const schema={id:'text',keyType:'Const' as const,key:'原文',valueType:'Content' as const,functionIds:[fn.id]}
   const result:FunctionResult={functionId:fn.id,name:fn.name,fileName:'../../functions/test-fn.js',input:' 原始值 ',value:'函数结果\n# 正文标题',source:fn.code}
   const doc:ClassDocument={id:'test-doc',name:'测试',fileName:'测试.md',schema:[schema],entities:[{id:'entity',name:'实例',fields:[{id:'field',schemaId:'text',key:'原文',value:' 原始值 ',children:[],functionResults:[result]}]}]}
   world.documents.push(doc)
+  doc.entities[0].fields[0].functionRuns=[{functionId:fn.id,name:fn.name,input:result.input,source:functionRevision(fn,world)}]
   return {fn,world,doc,result,workspace:{worlds:[world],activeWorldId:world.id,functions:[fn]} as Workspace}
 }
-test('Function Markdown keeps original values and derived children separate and restores bindings',()=>{
+test('Function execution metadata never creates a function-named Markdown member',()=>{
   const {doc,world}=fixture(),text=documentMarkdown(doc),round=parseDocumentMarkdown(text,doc,world)
-  assert.deepEqual(round,doc)
-  assert.match(text,/#### \[清理文本\]\(\.\.\/\.\.\/functions\/test-fn.js\)/)
-  assert.match(text,/\\# 正文标题/)
+  assert.equal(round.entities[0].fields[0].value,doc.entities[0].fields[0].value)
+  assert.equal(round.entities[0].fields[0].functionResults,undefined)
+  assert.deepEqual(round.entities[0].fields[0].functionRuns,doc.entities[0].fields[0].functionRuns)
+  assert.equal(text.includes("#### [清理文本]"),false)
+  assert.equal(text.includes("函数结果"),false)
   const fresh={...doc,schema:[],entities:[]},imported=parseDocumentMarkdown(text,fresh,world)
-  assert.equal(imported.schema[0].valueType,'Text')
-  assert.deepEqual(imported.schema[0].functionIds,['test-fn'])
-  assert.equal(imported.entities[0].fields[0].children.length,0)
-  assert.equal(imported.entities[0].fields[0].functionResults![0].value,'函数结果\n# 正文标题')
+  assert.deepEqual(imported.schema,[])
+  assert.deepEqual(imported.entities[0].fields,[])
 })
 test('Object, Null and numeric function outputs round trip without changing source types',()=>{
   const {doc,world,result}=fixture()
@@ -37,7 +38,11 @@ test('Object, Null and numeric function outputs round trip without changing sour
     const field={...doc.entities[0].fields[0],value,children:type==='Object'?[{id:'child-value',schemaId:'child',key:'内部',value:'子值',children:[]}]:[]}
     field.functionResults=[{...result,input:functionInput(field,schema),value:'123\n# 函数正文'}]
     const next={...doc,schema:[schema],entities:[{...doc.entities[0],fields:[field]}]}
-    assert.deepEqual(parseDocumentMarkdown(documentMarkdown(next),next,world),next,type)
+    const parsed=parseDocumentMarkdown(documentMarkdown(next),next,world)
+    assert.equal(parsed.schema[0].valueType,type)
+    assert.equal(parsed.entities[0].fields[0].value,value)
+    assert.deepEqual(parsed.entities[0].fields[0].children,field.children)
+    assert.equal(parsed.entities[0].fields[0].functionResults,undefined)
   }
 })
 test('automatic jobs only run changed inputs or scripts and discard stale completion',()=>{
@@ -59,7 +64,7 @@ test('Class references resolve selected function output while retaining the refe
   assert.equal(referenceBase(reference),'[实例](测试.md#%E5%AE%9E%E4%BE%8B)')
   assert.equal(resolveFunctionReference(world,reference),'函数结果\n# 正文标题')
   const schema={...doc.schema[0],valueType:'Class' as const},field={...doc.entities[0].fields[0],value:reference}
-  assert.equal(functionInput(field,schema,world),'函数结果\n# 正文标题')
+  assert.equal(functionInput(field,schema,world),referenceBase(reference))
 })
 test('deleting a function clears nested schema bindings and results across worlds',()=>{
   const {workspace,fn}=fixture(),next=deleteFunction(workspace,fn.id)
@@ -141,7 +146,7 @@ test('typed return contracts reject native guesses, invalid dates and integers, 
   assert.throws(()=>validateTypedValue({...structured,members:[...structured.members,{key:'多余',value:{type:'Text',value:'x'}}]},{type:'Object',classId:doc.id},world),/不在类/)
 })
 
-test('typed automatic jobs retain structured results through Markdown and rerun on self or contract changes',()=>{
+test('automatic jobs keep execution state out of Markdown and rerun on self or script changes',()=>{
   const {workspace,fn,doc,world}=fixture()
   fn.apiVersion=2;fn.returnType={type:'Object'}
   fn.code='function transform(self,input){return values.object({name:values.text(self.name),text:input.to_value()});}'
@@ -151,9 +156,11 @@ test('typed automatic jobs retain structured results through Markdown and rerun 
   const next=applyFunctionResult(workspace,job,result),nextDoc=next.worlds[0].documents.find(d=>d.id===doc.id)!
   assert.equal(functionJobs(next).length,0)
   const round=parseDocumentMarkdown(documentMarkdown(nextDoc),nextDoc,next.worlds[0])
-  assert.deepEqual(round.entities[0].fields[0].functionResults![0],result)
+  assert.deepEqual(round.entities[0].fields[0].functionRuns,nextDoc.entities[0].fields[0].functionRuns)
+  assert.equal(round.entities[0].fields[0].functionResults,undefined)
   const imported=parseDocumentMarkdown(documentMarkdown(nextDoc),{...nextDoc,entities:[]},next.worlds[0])
-  assert.deepEqual(imported.entities[0].fields[0].functionResults![0].typedValue,typedValue)
+  assert.equal(imported.entities[0].fields[0].functionResults,undefined)
+  assert.equal(imported.entities[0].fields[0].value,doc.entities[0].fields[0].value)
   const changed=structuredClone(next);changed.worlds[0].documents.find(d=>d.id===doc.id)!.entities[0].name='新名字'
   assert.equal(functionJobs(changed).length,1)
   assert.equal(applyFunctionResult(changed,job,result),changed)
@@ -161,15 +168,35 @@ test('typed automatic jobs retain structured results through Markdown and rerun 
   assert.notEqual(functionJobs(changed)[0].source,job.source)
 })
 
-test('selected derived references supply their typed result instead of a flattened string',()=>{
+test('Class references retain instance identity even with legacy function suffixes or failed results',()=>{
   const {world,doc}=fixture(),field=doc.entities[0].fields[0]
-  field.functionResults![0].typedValue={type:'Integer',value:25}
   const reference='[实例](测试.md#%E5%AE%9E%E4%BE%8B) [清理文本](../../functions/test-fn.js)@field'
-  assert.deepEqual(fieldTypedValue({...field,value:reference},{...doc.schema[0],valueType:'Class'},world),{type:'Integer',value:25})
-  delete field.functionResults![0].typedValue
-  assert.equal(fieldTypedValue({...field,value:reference},{...doc.schema[0],valueType:'Class'},world).type,'Text')
+  const expected={type:'Class',classId:doc.id,entityId:doc.entities[0].id}
+  field.functionResults![0].typedValue={type:'Integer',value:25}
+  assert.deepEqual(fieldTypedValue({...field,value:reference},{...doc.schema[0],valueType:'Class'},world),expected)
   field.functionResults![0].error='失败'
-  assert.throws(()=>fieldTypedValue({...field,value:reference},{...doc.schema[0],valueType:'Class'},world),/尚未生成|失败/)
+  assert.deepEqual(fieldTypedValue({...field,value:reference},{...doc.schema[0],valueType:'Class'},world),expected)
+})
+
+test('automatic scans share a snapshot revision across classes and still invalidate after renaming an instance',()=>{
+  const {workspace,world,doc,fn}=fixture()
+  fn.apiVersion=2;fn.returnType={type:'Text'}
+  doc.entities=Array.from({length:120},(_,i)=>({id:`entity-${i}`,name:`实例${i}`,fields:[{id:`field-${i}`,schemaId:'text',key:'原文',value:`内容${i}`,children:[]}]}))
+  world.documents.push({...doc,id:'second-doc',fileName:'第二类.md',entities:doc.entities.map(entity=>({...entity,id:`second-${entity.id}`,fields:entity.fields.map(field=>({...field,id:`second-${field.id}`}))}))})
+  const jobs=functionJobs(workspace)
+  assert.equal(jobs.length,240)
+  assert.equal(new Set(jobs.map(job=>job.source)).size,1)
+  assert.equal(new Set(jobs.map(job=>job.context!.self.classId)).size,2)
+  const first=jobs[0],result={functionId:fn.id,name:fn.name,fileName:`../../functions/${fn.id}.js`,input:first.input,value:'完成',contextKey:first.contextKey,source:first.source}
+  const saved=applyFunctionResult(workspace,first,result)
+  assert.equal(functionJobs(saved).length,239)
+  assert.equal(applyFunctionResult(saved,first,structuredClone(result)),saved)
+  // Reuse the same world identity: the cache must end with the scan itself.
+  doc.entities[0].name='改名后'
+  const changed=functionJobs(workspace)
+  assert.equal(changed.length,240)
+  assert.notEqual(changed[0].source,first.source)
+  assert.equal(applyFunctionResult(workspace,first,result),workspace)
 })
 
 test('removing custom collections preserves content and protects default collections',()=>{

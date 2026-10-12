@@ -51,7 +51,7 @@ test('code blocks support dynamic inputs, loops and world API and preserve branc
   assert.match(await run(graph,'前缀\n',world),/^前缀\n## 林青/)
   assert.ok(!compileFlow(graph).includes('undefined:'))
 })
-test('Flow results use .flow Markdown keys and world-dependent jobs reject stale object snapshots without rerunning on layout changes',()=>{
+test('void Flow persists execution state and reuses generated data after unrelated or layout changes',()=>{
   const {world,doc,entity}=fixture(),fn=createFunction([],'flow'),node=newFlowNode('entityMarkdown')
   node.object={classId:doc.id,entityId:entity.id,path:[]};fn.flow={...fn.flow!,nodes:[...fn.flow!.nodes,node]};fn.flow=connectFlow(fn.flow,node.id,fn.flow.nodes[1].id,'value')
   const schema=doc.schema.find(s=>s.key==='人物性格')!;schema.functionIds=[fn.id]
@@ -60,12 +60,15 @@ test('Flow results use .flow Markdown keys and world-dependent jobs reject stale
   const next=applyFunctionResult(workspace,job,result),nextDoc=next.worlds[0].documents.find(d=>d.id===doc.id)!
   assert.equal(worldCatalog(next.worlds[0],fn.id).classes.find(d=>d.id===doc.id)!.markdown.includes(`.flow)`),false)
   assert.equal(functionJobs(next).length,0)
-  const md=documentMarkdown(nextDoc);assert.match(md,/\.flow\)/)
+  const md=documentMarkdown(nextDoc);assert.doesNotMatch(md,/\.flow\)/)
   assert.deepEqual(parseDocumentMarkdown(md,nextDoc,next.worlds[0]),nextDoc)
   const moved=structuredClone(next);moved.functions![0].flow!.nodes[0].x+=100
   assert.equal(functionRevision(moved.functions![0],moved.worlds[0]),job.source)
   assert.equal(functionJobs(moved).length,0)
   const changed=structuredClone(next);changed.worlds[0].documents.find(d=>d.id===doc.id)!.entities[0].name='改名'
+  assert.equal(functionJobs(changed).length,0)
+  assert.equal(applyFunctionResult(changed,job,result),changed)
+  changed.worlds[0].documents.find(d=>d.id===doc.id)!.entities[0].fields.find(f=>f.schemaId===schema.id)!.value='新的原始输入'
   assert.equal(functionJobs(changed).length,1)
   assert.equal(applyFunctionResult(changed,job,result),changed)
 })
