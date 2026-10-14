@@ -157,9 +157,10 @@ with open(sys.argv[2], 'w', encoding='utf-8') as f:
             std::thread::sleep(Duration::from_millis(20));
         }
         if fs::metadata(&output).map_err(|_|format!("函数未返回结果。\n{}",diagnostics()))?.len()>6_000_000 {return Err("返回值过大".into());}
-        let result:Value=serde_json::from_str(&fs::read_to_string(output).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
-        if let Some(error)=result.get("error").and_then(Value::as_str) {return Err(error.into());}
-        if bridge {return serde_json::to_string(&result).map_err(|e|e.to_string());}
+        let mut result:Value=serde_json::from_str(&fs::read_to_string(output).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+        let console_output=diagnostics();
+        if let Some(error)=result.get("error").and_then(Value::as_str) {return Err(if console_output.is_empty(){error.to_owned()}else{format!("{}\n{}",error,console_output)});}
+        if bridge {if !console_output.is_empty(){result["logs"]=json!(console_output);}return serde_json::to_string(&result).map_err(|e|e.to_string());}
         if !context.is_null(){return serde_json::to_string(result.get("value").ok_or("函数没有返回值")?).map_err(|e|e.to_string());}
         result.get("value").and_then(Value::as_str).map(str::to_owned).ok_or("函数必须返回字符串".into())
     })();
@@ -248,6 +249,14 @@ mod tests {
         assert!(execute(&root,"js","function transform(input){return 42;}","").is_err());
         assert!(execute(&root,"py","def transform(input):\n    return 42","").is_err());
         assert!(execute(&root,"exe","","").is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn bridge_returns_console_output_without_polluting_result_values() {
+        let root=std::env::temp_dir().join(format!("myuniverse-console-test-{}",std::process::id()));
+        let raw=execute_with_context_bridge(&root,"py","def transform(input):\n    print('日志中文')\n    return input", "结果",&json!({"classes":[]}),"",&Value::Null,"",&Value::Null,true).unwrap();
+        let result:Value=serde_json::from_str(&raw).unwrap();
+        assert_eq!(result["value"],"结果");assert_eq!(result["logs"],"日志中文");
         fs::remove_dir_all(root).unwrap();
     }
     #[test]

@@ -1,8 +1,9 @@
 import type {WorkflowNode,WorkflowKind,FlowNodeType} from './types'
 
 const descriptions:Record<WorkflowKind,string>={
- loop:'从 initial 开始，每轮计算 next 与 continue；至少运行一次，结束后从 result 输出。',condition:'只计算 Boolean 条件选中的真/假分支，输出选中的值。',agent:'调用一个 Agents 对象，传入 JSON 参数文本并返回结果文本。',
- input:'输出本次运行的输入文字。',return:'返回 value；after 仅用于等待保存或其他前置操作完成。',
+ sequence:'按输入端口顺序逐个等待依赖完成，原值从对应输出透传。',break:'普通叶子完成后检查 condition；为 true 时直接退出循环，不执行 continue。',continue:'break 为 false 后检查 condition；true 进入下一轮，false 提前结束，repeat 为硬上限。',method:'双击进入方法体，共享变量池；无参数和业务返回值，value 原样透传。',
+ loop:'双击进入循环体；普通叶子、break、continue 依次完成，最多 repeat 轮，value 原样透传。',condition:'只计算 Boolean 条件选中的真/假分支，输出选中的值。',agent:'调用一个 Agents 对象，传入 JSON 参数文本并返回结果文本。',
+ input:'输出本次运行的输入文字。',return:'最后执行的叶子，等待其他叶子完成后返回 value；方法内部仅表示完成。',
  constant:'输出配置的固定文字或 JSON 值。',world:'读取所选世界对象，以配置的 Markdown、原始值或类型对象输出。',
  add:'输出 a + b，不修改输入。',subtract:'输出 a − b，不修改输入。',multiply:'输出 a × b，不修改输入。',divide:'输出 a ÷ b；除数为零时失败。',concat:'使用配置的分隔文字连接 a 与 b，输出新文本。',
  function:'调用所选 Function，按其固定数据契约传入并返回结果。',

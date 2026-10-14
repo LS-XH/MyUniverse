@@ -4,17 +4,22 @@ export interface EditEdge {id:string;from:string;to:string}
 export interface EditGraph<N extends EditNode=EditNode,E extends EditEdge=EditEdge>{version:1;nodes:N[];links?:E[];edges?:E[]}
 export const edgesOf=<N extends EditNode,E extends EditEdge>(graph:EditGraph<N,E>)=>graph.links||graph.edges||[]
 export function removeGraphSelection<G extends EditGraph>(graph:G,nodes:string[],edges:string[]):G {
-  const removable=new Set(nodes)
+  const scope=(graph as G&{scope?:string}).scope
+  const protectedIds=new Set(graph.nodes.filter(n=>scope==='loop'?['break','continue'].includes(n.kind||''):scope==='method'?n.kind==='return':false).map(n=>n.id))
+  const removable=new Set(nodes.filter(id=>!protectedIds.has(id)))
   const remaining=edgesOf(graph).filter(e=>!edges.includes(e.id)&&!removable.has(e.from)&&!removable.has(e.to))
   return {...graph,nodes:graph.nodes.filter(n=>!removable.has(n.id)),...(graph.links?{links:remaining}:{edges:remaining})}
 }
 export function graphFragment<G extends EditGraph>(graph:G,selected:string[]):G {
   const ids=new Set(selected),nodes=graph.nodes.filter(n=>ids.has(n.id)),edges=edgesOf(graph).filter(e=>ids.has(e.from)&&ids.has(e.to))
-  return structuredClone({...graph,nodes,...(graph.links?{links:edges}:{edges})})
+  return structuredClone({...graph,...('scope'in graph?{scope:undefined}:{}),nodes,...(graph.links?{links:edges}:{edges})})
 }
 export function pasteGraphFragment<G extends EditGraph>(graph:G,fragment:G,offset={x:36,y:36}):{graph:G;ids:string[]} {
-  const nodes=fragment.nodes
-  const ids=new Map(nodes.map(n=>[n.id,uid()])),copied=nodes.map(n=>({...structuredClone(n),id:ids.get(n.id)!,x:n.x+offset.x,y:n.y+offset.y}))
+  const scope=(graph as G&{scope?:string}).scope
+  const nodes=fragment.nodes.filter(n=>scope==='loop'?!['input','return','break','continue'].includes(n.kind||''):scope==='method'?!['input','return','break','continue'].includes(n.kind||''):!['break','continue'].includes(n.kind||''))
+  const ids=new Map(nodes.map(n=>[n.id,uid()]))
+  const cloneBody=(body:import('./types').WorkflowGraph):import('./types').WorkflowGraph=>{const mapping=new Map(body.nodes.map(n=>[n.id,uid()]));return {...structuredClone(body),nodes:body.nodes.map(n=>({...structuredClone(n),id:mapping.get(n.id)!,...(n.body?{body:cloneBody(n.body)}:{})})),links:body.links.map(e=>({...e,id:uid(),from:mapping.get(e.from)!,to:mapping.get(e.to)!}))}}
+  const copied=nodes.map(n=>({...structuredClone(n),id:ids.get(n.id)!,x:n.x+offset.x,y:n.y+offset.y,...('body'in n&&n.body?{body:cloneBody(n.body as import('./types').WorkflowGraph)}:{})}))
   const edges=edgesOf(fragment).filter(e=>ids.has(e.from)&&ids.has(e.to)).map(e=>({...structuredClone(e),id:uid(),from:ids.get(e.from)!,to:ids.get(e.to)!}))
   return {graph:{...graph,nodes:[...graph.nodes,...copied],...(graph.links?{links:[...edgesOf(graph),...edges]}:{edges:[...edgesOf(graph),...edges]})},ids:copied.map(n=>n.id)}
 }

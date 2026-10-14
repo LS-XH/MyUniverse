@@ -6,14 +6,16 @@
 
 | 层次 | 内容 | 生命周期 |
 | --- | --- | --- |
-| WorkflowGraph | version=1、nodes、links、variableOrder | 持久图定义 |
-| WorkflowNode | id/kind、x/y、settings、inputs/outputs、bindings 等 | 类型、参数及布局 |
+| WorkflowGraph | version=1、nodes、links、variableOrder、可选 scope | 持久图定义 |
+| WorkflowNode | id/kind、x/y、settings、inputs/outputs、bindings、循环 body 等 | 类型、参数及布局 |
 | WorkflowLink | id、from/output、to/input | 输出至输入有向关系 |
 | Agent.variables | 初始变量声明和值 | 持久初始定义 |
 | Agent.memory[worldId/global] | 最近成功的变量表 | 按世界持久记忆 |
 | 执行缓存与变量副本 | 每节点结果、命名输出、工作变量 | 一次运行 |
 | 选择、连接、历史、观察 | 编辑/运行状态 | 页面临时状态 |
 
+
+循环持有 WorkflowNode.body（scope=loop）并仅在该图内连线；方法体持有于变量池 Method 值的 graph（scope=method）。内置 break/continue 或方法返回使用稳定节点 ID，复制循环递归重建内图节点和线身份，复制方法卡片保留方法变量身份。编辑这些定义仍保存于 workspace.json，不写世界 Markdown。
 
 Graph 的求值、循环与记忆提交见 [工作流执行](../features/workflow-execution.md)。
 
@@ -41,6 +43,7 @@ Graph 的求值、循环与记忆提交见 [工作流执行](../features/workflo
 | Image | IMAGE_OBJECT | 空 url；版本化资源引用 |
 | Tools | TOOLS | 空 toolIds；唯一、非空注册 ID 数组 |
 | Agents | AGENTS | 空 agentIds；唯一、非空 Agent 注册 ID 数组 |
+| Method（方法） | 方法卡片为 ANY 控制桥；定义本身不作为业务端口值 | 默认带完成返回的 method 图，无参数或业务返回 |
 
 禁止新建 ANY 变量。同名变量节点必须声明相同类型，运行前拒绝冲突。Number 可与 INT/FLOAT 兼容，但不将字符串、NaN/Infinity 当有效值。Tools、Agents 输入均严格拒绝 ANY 和其他身份类型，不能互相冒充。ANY 仅保留执行依赖、通用/旧接口和 SD 桥接等明确用途。
 
@@ -66,6 +69,8 @@ graph.variableOrder 保存池顺序的稳定 ID，不依赖对象数字键排序
 
 初始值与本次工作值在 UI 区分，运行中禁止编辑定义。池 UI 和排序动画见 [工作流编辑器](../ui/workflow-editor.md)。
 
+方法图与循环图中的变量节点、绑定引用，改名、改类型和删除都按稳定变量 ID 递归更新；方法声明保留在变量池，多处调用共用其图。清空所有值跳过 Method 定义，避免把函数体当运行数据丢弃。
+
 ## 端口变量引用
 
 WorkflowNode.bindings 用 `in:端口` / `out:端口` 保存 `{variableId,name,output?}`。入端口绑定读取变量，出端口绑定写入；语义配对入端口携带 output，执行完成后写回，表达引用传递。
@@ -74,7 +79,7 @@ WorkflowNode.bindings 用 `in:端口` / `out:端口` 保存 `{variableId,name,ou
 
 旧图迁移将上述分离节点的输入绑定移除 output 隐式写回字段，保留变量身份、独立输出绑定和连线。不自动把输入引用搬到输出引用，避免覆盖完整上下文；保存新结果需明确接出端口。
 
-输入引用与连线共存：有线时先严格校验并写入绑定变量，再把同一值交给节点；无线时读取绑定变量，再沿用字面量/默认值。语义配对输入在完成后继续自动写回；独立输出绑定校验并更新变量，同时向所有下游传值。绑定、拖入、连线保留已有另一种关系，断线保留引用，解绑保留线。执行按稳定 ID 查变量，名称只用于同步与显示；需要明确数据链或 after 保证副作用顺序。
+输入引用与连线共存：有线时先严格校验并写入绑定变量，再把同一值交给节点；无线时读取绑定变量，再沿用字面量/默认值。语义配对输入在完成后继续自动写回；独立输出绑定校验并更新变量，同时向所有下游传值。绑定、拖入、连线保留已有另一种关系，断线保留引用，解绑保留线。执行按稳定 ID 查变量，名称只用于同步与显示；需要明确数据链、顺序执行或兼容 after 保证副作用顺序。
 
 拖动临时填入不写 bindings；有效释放才绑定。拖出引用移除绑定并生成对应变量节点，池定义保留。图移入/移出和撤销不直接修改世界对象。
 
@@ -90,9 +95,10 @@ kind=valueMethod/valueProperty；variableType 和 member 定义身份。self 接
 | Messages | 存在待执行调用（Boolean）、数量、最后一条文本、待调用 JSON、下一个调用 ID/名称/参数 | 添加 system/user/assistant、ToolUse、工具返回、合并、清空、保留最近轮次 |
 | Image | url、filename、width、height | 从 URL 建立、从 SD 结果取图、显示、保存 |
 | Tools | 数量、说明与参数 JSON | 获取注册 Tool、合并去重集合、调用单个 Tool |
+| Method | 无 | 调用内部无参图；无业务返回值 |
 | Agents | 数量、说明与参数 JSON | 获取注册 Agent、合并去重集合、调用单个 Agent |
 
-成员目录是类型的固定功能，不按卡片实例随意改名。方法/属性图标、目录和端口展示由工作流 UI 负责。
+成员目录是类型的固定功能，不按卡片实例随意改名。Method 与这里的 valueMethod（类型的内置计算方法）不同：Method 是用户自定义无参程序图，无类型成员目录。方法/属性图标、目录和端口展示由工作流 UI 负责。
 
 ## Messages
 
@@ -167,3 +173,4 @@ Tool 旧类型统一迁移为 Tools，包括信封、封装值、variableType、
 workflowValues.ts：类型和值/成员；variablePool.ts：定义与记忆协调；workflowBindings.ts：端口引用；workflowMigration.ts：旧标签；workflows.ts：图校验；services/workflows.ts：运行工作副本；workflowTools.ts/workflowImages.ts：适配。
 
 重点验证严格类型、同名冲突、显式读写、引用配对、改名/清空/删除、世界隔离、失败不提交及工具调用 ID。验收方法见 [开发与验证](../development.md)，具体历次结果见 [修改日志](../changelog/README.md)。
+

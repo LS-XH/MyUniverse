@@ -1,9 +1,13 @@
-import {ArrowDownUp,Database,FileBox,Folder,Sigma,Bot,Wrench,Binary,Hash,Image,CircleHelp,Network,Repeat,GitBranch} from 'lucide-react'
+import {ArrowDownUp,Database,FileBox,Folder,Sigma,Bot,Wrench,Binary,Hash,Image,CircleHelp,Network,Repeat,GitBranch,ListOrdered,Octagon,SkipForward} from 'lucide-react'
 import {Letters,ScanBox,FileCodeCorner,SquareSparkles} from './LucideWorkflowIcons'
 function MessagesCircle(){return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 16a7 7 0 1 0-4-3l-1 4 5-1Z"/><path d="M10 18a7 7 0 0 0 9-2l3 1-1-4a7 7 0 0 0-3-7"/></svg>}
 const icons={letters:Letters,scan:ScanBox,method:FileCodeCorner,sd:SquareSparkles}
 export function LocalWorkflowIcon({name,size=16}:{name:keyof typeof icons;size?:number}){const Icon=icons[name];return <Icon className="workflow-type-icon" size={size} aria-hidden="true"/>}
 export default function WorkflowIcon({kind,type}:{kind:string;type?:string}){
+ if(type==='Method'||kind==='method')return <LocalWorkflowIcon name="method"/>
+ if(kind==='sequence')return <ListOrdered size={16}/>
+ if(kind==='break')return <Octagon size={16}/>
+ if(kind==='continue')return <SkipForward size={16}/>
  if(kind==='valueMethod')return <LocalWorkflowIcon name="method"/>
  if(kind==='valueProperty')return <FileBox size={16}/>
  if(type==='Agents')return <Network size={16}/>

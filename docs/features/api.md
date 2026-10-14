@@ -30,7 +30,7 @@ async function execute({text}) {
 
 绑定 Function 定义 `transform(self, input)`；self 是实例门面，input 是绑定成员的原始输入包装，返回 void。`input.add(schemaIdOrName, values.text("内容"), key?)` 添加声明的可重复成员；完整类型、Class/Object 参数和作用域见 [Function](functions.md#统一-add-接口)。
 
-JS Tool 定义 `execute(params)`，params 先经 inputSchema 验证，返回字符串或 JSON 可传输值；配置 readOnlyHint 时门面写入被拒绝。例子中的 app.storage.save() 在当前手动模式不会写盘，成功执行先提交内存，之后由用户保存。官方模型调用名与参数见 [九项工具契约](official-tools.md#九项调用契约)。
+JS Tool 定义 `execute(params)`，params 先经 inputSchema 验证，返回字符串或 JSON 可传输值；配置 readOnlyHint 时门面写入被拒绝。app.storage.save() 不隐式导出 Markdown；执行成功更新对象后由主程序自动存档 JSON。官方模型调用名与参数见 [十一项工具契约](official-tools.md#十一项调用契约)。
 
 ## 模型 HTTP 与 SSE
 

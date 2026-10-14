@@ -55,27 +55,47 @@ fn write_atomic(path: &Path, contents: &str) -> Result<(), String> {
     fs::rename(&temp, path).map_err(|e| e.to_string())
 }
 #[tauri::command]
-fn load_workspace() -> Result<Value, String> {
-    let file = user_dir()?.join("workspace.json");
-    if !file.exists() { return Ok(serde_json::json!({"worlds":[],"activeWorldId":null})); }
-    let data=fs::read_to_string(file).map_err(|e| e.to_string())?;
-    let mut workspace:Value=serde_json::from_str(&data).map_err(|e|e.to_string())?;
-    if let Some(scripts)=workspace.get_mut("functions").and_then(Value::as_array_mut) {
-        for script in scripts {
-            let id=script.get("id").and_then(Value::as_str).ok_or("Missing function id")?;
-            let language=script.get("language").and_then(Value::as_str).ok_or("Missing function language")?;
-            safe_component(id)?;
-            if !["js","py","flow"].contains(&language) {return Err("Invalid function language".into());}
-            let path=user_dir()?.join("functions").join(format!("{}.{}",id,language));
-            if path.exists() {let content=fs::read_to_string(path).map_err(|e|e.to_string())?;if language=="flow" {script["flow"]=serde_json::from_str(&content).map_err(|e|e.to_string())?;}else {script["code"]=Value::String(content);}}
-        }
+async fn load_workspace() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move||load_workspace_text_at(&user_dir()?)).await.map_err(|e|e.to_string())?
+}
+fn load_workspace_text_at(root:&Path)->Result<String,String>{
+    let file = root.join("workspace.json");
+    if !file.exists() { return Ok(r#"{"worlds":[],"activeWorldId":null}"#.into()); }
+    fs::read_to_string(file).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn checkpoint_workspace(text:String)->Result<(),String>{
+    tauri::async_runtime::spawn_blocking(move||checkpoint_workspace_at(&user_dir()?,&text)).await.map_err(|e|e.to_string())?
+}
+fn checkpoint_workspace_at(root:&Path,text:&str)->Result<(),String>{
+    let workspace:Value=serde_json::from_str(text).map_err(|e|e.to_string())?;
+    if !workspace.get("worlds").is_some_and(Value::is_array){return Err("Invalid workspace archive".into());}
+    fs::create_dir_all(root).map_err(|e|e.to_string())?;
+    let target=root.join("workspace.json");let backup=root.join("workspace.before-json-primary.json");
+    if target.exists()&&!backup.exists(){
+        let previous=fs::read_to_string(&target).map_err(|e|e.to_string())?;
+        let old:Value=serde_json::from_str(&previous).map_err(|e|e.to_string())?;
+        if old.get("archiveVersion").and_then(Value::as_u64)!=Some(2){write_atomic(&backup,&previous)?;}
     }
-    Ok(workspace)
+    write_atomic(&target,text)
+}
+#[tauri::command]
+async fn export_workspace(workspace:Value,files:HashMap<String,HashMap<String,String>>)->Result<(),String>{
+    tauri::async_runtime::spawn_blocking(move||{
+        let root=user_dir()?;
+        // Reuse the export implementation in an isolated output function: the
+        // authoritative workspace.json is never replaced by a scoped projection.
+        export_workspace_at(&root,workspace,files)
+    }).await.map_err(|e|e.to_string())?
 }
 type FileSnapshot = HashMap<String, HashMap<String, Option<String>>>;
 #[tauri::command]
-fn read_document_files(requests: HashMap<String, Vec<String>>) -> Result<FileSnapshot, String> {
-    let root=user_dir()?.join("worlds");
+async fn read_document_files(requests: HashMap<String, Vec<String>>) -> Result<FileSnapshot, String> {
+    tauri::async_runtime::spawn_blocking(move||read_document_files_at(&user_dir()?,requests)).await.map_err(|e|e.to_string())?
+}
+fn read_document_files_at(root:&Path,requests:HashMap<String,Vec<String>>)->Result<FileSnapshot,String>{
+    let root=root.join("worlds");
     let mut result=HashMap::new();
     for (world_id, names) in requests {
         let directory=root.join(safe_component(&world_id)?);
@@ -92,27 +112,11 @@ fn read_document_files(requests: HashMap<String, Vec<String>>) -> Result<FileSna
     Ok(result)
 }
 #[tauri::command]
-fn save_workspace(workspace: Value, files: HashMap<String, HashMap<String,String>>, json_only:Option<bool>) -> Result<(), String> {
-    if json_only.unwrap_or(false) {
-        let root=user_dir()?;
-        for (world_id,entries) in files {
-            let directory=root.join("worlds").join(safe_component(&world_id)?);
-            fs::create_dir_all(&directory).map_err(|e|e.to_string())?;
-            for (name,text) in entries {
-                if !name.ends_with(".json") {return Err("Configuration save only accepts JSON".into());}
-                write_atomic(&directory.join(safe_component(&name)?),&text)?;
-            }
-        }
-        return write_atomic(&root.join("workspace.json"),&serde_json::to_string_pretty(&workspace).map_err(|e|e.to_string())?);
-    }
-    save_workspace_at(&user_dir()?, workspace, files, HashMap::new())
-}
-#[tauri::command]
 async fn run_function(language:String,code:String,input:String,world:Option<Value>,api:Option<String>,context:Option<Value>,runtime_api:Option<String>,contract:Option<Value>,bridge:Option<bool>)->Result<String,String> {
     let root=user_dir()?;
     tauri::async_runtime::spawn_blocking(move||functions::execute_with_context_bridge(&root,&language,&code,&input,&world.unwrap_or(serde_json::json!({"classes":[]})),&api.unwrap_or_default(),&context.unwrap_or(Value::Null),&runtime_api.unwrap_or_default(),&contract.unwrap_or(Value::Null),bridge.unwrap_or(false))).await.map_err(|e|e.to_string())?
 }
-fn save_workspace_at(root: &Path, workspace: Value, files: HashMap<String, HashMap<String,String>>, _expected: FileSnapshot) -> Result<(), String> {
+fn export_workspace_at(root: &Path, workspace: Value, files: HashMap<String, HashMap<String,String>>) -> Result<(), String> {
     fs::create_dir_all(root).map_err(|e| e.to_string())?;
     for (world_id, entries) in files {
         let directory=root.join("worlds").join(safe_component(&world_id)?);
@@ -145,11 +149,41 @@ fn save_workspace_at(root: &Path, workspace: Value, files: HashMap<String, HashM
             }
         }
     }
-    write_atomic(&root.join("workspace.json"),&serde_json::to_string_pretty(&workspace).map_err(|e| e.to_string())?)
+    Ok(())
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn json_archive_is_authoritative_and_export_never_replaces_it(){
+        let suffix=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root=std::env::temp_dir().join(format!("myuniverse-json-{}-{suffix}",std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let old=r#"{"worlds":[],"activeWorldId":null}"#;
+        fs::write(root.join("workspace.json"),old).unwrap();
+        let next=r#"{"archiveVersion":2,"worlds":[],"functions":[],"activeWorldId":null}"#;
+        checkpoint_workspace_at(&root,next).unwrap();
+        assert_eq!(fs::read_to_string(root.join("workspace.before-json-primary.json")).unwrap(),old);
+        let files=HashMap::from([("world".into(),HashMap::from([("人物.md".into(),"# 人物\n".into())]))]);
+        export_workspace_at(&root,serde_json::json!({"worlds":[]}),files).unwrap();
+        assert_eq!(fs::read_to_string(root.join("workspace.json")).unwrap(),next);
+        assert!(checkpoint_workspace_at(&root,"broken").is_err());
+        assert_eq!(fs::read_to_string(root.join("workspace.json")).unwrap(),next);
+        checkpoint_workspace_at(&root,next).unwrap();
+        assert_eq!(fs::read_to_string(root.join("workspace.before-json-primary.json")).unwrap(),old);
+        fs::remove_dir_all(&root).unwrap();
+    }
+    #[test]
+    fn startup_ignores_broken_markdown_and_external_function_exports(){
+        let suffix=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root=std::env::temp_dir().join(format!("myuniverse-json-load-{}-{suffix}",std::process::id()));
+        fs::create_dir_all(root.join("functions")).unwrap();fs::create_dir_all(root.join("worlds/w")).unwrap();
+        let value=serde_json::json!({"worlds":[{"id":"w","documents":[{"id":"a","fileName":"人物.md","entities":[{"id":"stable","name":"JSON 人物"}]}]}],"functions":[{"id":"fn","language":"js","code":"JSON code"}]});
+        fs::write(root.join("workspace.json"),value.to_string()).unwrap();
+        fs::write(root.join("worlds/w/人物.md"),[0xff,0xfe]).unwrap();fs::write(root.join("functions/fn.js"),"external code").unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&load_workspace_text_at(&root).unwrap()).unwrap(),value);
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn reveal_location_requires_existing_scoped_path() {
         let suffix=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
@@ -172,10 +206,9 @@ mod tests {
         let file=directory.join("人物列表.md");
         fs::write(&file,[0xff,0xfe,0x00]).unwrap();
         let files=HashMap::from([("test-world".into(),HashMap::from([("人物列表.md".into(),"# 人物\n\n## 界面编辑\n".into())]))]);
-        save_workspace_at(&root,serde_json::json!({"worlds":[]}),files,HashMap::new()).unwrap();
+        export_workspace_at(&root,serde_json::json!({"worlds":[]}),files).unwrap();
         assert_eq!(fs::read_to_string(&file).unwrap(),"# 人物\n\n## 界面编辑\n");
         fs::remove_file(file).unwrap();
-        fs::remove_file(root.join("workspace.json")).unwrap();
         fs::remove_dir(directory).unwrap();fs::remove_dir(root.join("worlds")).unwrap();fs::remove_dir(root).unwrap();
     }
     #[test]
@@ -187,7 +220,7 @@ mod tests {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![load_workspace, read_document_files, save_workspace, run_function, model_http::model_http,model_stream::model_stream,model_stream::cancel_model_stream, workflow_ws::watch_workflow_events, workflow_ws::stop_workflow_events, reveal_file, save_workflow_image])
+        .invoke_handler(tauri::generate_handler![load_workspace, checkpoint_workspace, export_workspace, read_document_files, run_function, model_http::model_http,model_stream::model_stream,model_stream::cancel_model_stream, workflow_ws::watch_workflow_events, workflow_ws::stop_workflow_events, reveal_file, save_workflow_image])
         .run(tauri::generate_context!())
         .expect("error while running MyUniverse");
 }

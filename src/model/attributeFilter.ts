@@ -22,7 +22,7 @@ export function attributeKeys(world:World,doc:ClassDocument){
 }
 export function attributeValues(world:World,doc:ClassDocument,key:string){
  const values=key===INSTANCE_FILTER_KEY?doc.entities.map(entity=>entity.name):doc.entities.flatMap(entity=>walk(entity.fields).filter(field=>attributeKey(field.key)===key).map(field=>field.value))
- return [...new Set(values)].map(value=>({value,label:filterDisplay(world,value),search:`${filterDisplay(world,value)} ${value}`}))
+ return [...new Set(values)].map(value=>{const display=filterDisplay(world,value);return {value,label:display.length>160?display.slice(0,160)+'…':display,search:`${display} ${value}`}})
 }
 /** Compute display identities without cloning editable fields or discarding hidden siblings. */
 export function matchingAttributeBranch(entity:Entity,filter:AttributeFilter,showGenerated=true):Set<string>|undefined{

@@ -1,5 +1,7 @@
-import { ClassDocument, FieldValue, World } from './types'
+import { ClassDocument, FieldSchema, FieldValue, World } from './types'
 import { escapeTextHeadings, parseDocumentMarkdown } from './markdownParser'
+import {referenceText} from './referenceText'
+export {fillDocumentMarkdown} from './markdownImport'
 export { parseDocumentMarkdown } from './markdownParser'
 export function markdownHeadingLevels(text:string):number[] {
   let fence:{char:string;length:number}|null=null
@@ -13,20 +15,19 @@ export function classLink(world: World, classId: string, entityId: string): stri
   const doc=world.documents.find(d=>d.id===classId), entity=doc?.entities.find(e=>e.id===entityId)
   return doc && entity ? `[${entity.name}](${doc.fileName}#${encodeURIComponent(entity.name)})` : ''
 }
-export function fieldHeading(field:FieldValue,depth:number):string {
- const name=field.functionOrigin?.name.replace(/[&<>-]/g,c=>`&#${c.charCodeAt(0)};`).replace(/[\r\n]/g,' ')
- return `${'#'.repeat(depth)} ${field.key}${name?` <!-- ${name} -->`:''}\n`
+export function fieldHeading(field:FieldValue,depth:number,schema?:FieldSchema):string {
+ return `${'#'.repeat(depth)} ${!schema||schema.keyType==='Class'?referenceText(field.key):field.key}\n`
 }
-export function fieldMarkdown(fields: FieldValue[], depth: number): string {
+export function fieldMarkdown(fields: FieldValue[], depth: number,schemas?:FieldSchema[]): string {
   return fields.map(field => {
-    const heading = fieldHeading(field,depth)
-    const value = field.value ? `\n${escapeTextHeadings(field.value, true)}\n` : ''
-    return heading + value + (field.children.length ? `\n${fieldMarkdown(field.children, depth+1)}` : '')
+    const schema=schemas?.find(s=>s.id===field.schemaId),heading = fieldHeading(field,depth,schema)
+    const value = field.value ? `\n${escapeTextHeadings(!schema||schema.valueType==='Class'?referenceText(field.value):field.value, true)}\n` : ''
+    return heading + value + (field.children.length ? `\n${fieldMarkdown(field.children, depth+1,schema?.children)}` : '')
   }).join('\n')
 }
-export function entityMarkdown(entity:ClassDocument['entities'][number]):string {return `## ${entity.name}\n\n${fieldMarkdown(entity.fields,3)}`.replace(/\n+$/,'')+'\n'}
+export function entityMarkdown(entity:ClassDocument['entities'][number],schema?:FieldSchema[]):string {return `## ${entity.name}\n\n${fieldMarkdown(entity.fields,3,schema)}`.replace(/\n+$/,'')+'\n'}
 export function documentMarkdown(doc: ClassDocument): string {
-  return `# ${doc.name}\n\n${doc.entities.map(e=>`## ${e.name}\n\n${fieldMarkdown(e.fields,3)}`).join('\n')}`.replace(/\n+$/,'')+'\n'
+  return `# ${doc.name}\n\n${doc.entities.map(e=>`## ${e.name}\n\n${fieldMarkdown(e.fields,3,doc.schema)}`).join('\n')}`.replace(/\n+$/,'')+'\n'
 }
 export function markdownLocations(doc:ClassDocument):Record<string,{key:number;value:number;end:number}> {
   const source=documentMarkdown(doc),locations:Record<string,{key:number;value:number;end:number}>={}
@@ -34,25 +35,26 @@ export function markdownLocations(doc:ClassDocument):Record<string,{key:number;v
   const breaks:number[]=[]
   for(let i=0;i<source.length;i++)if(source[i]==='\n')breaks.push(i)
   const line=(offset:number)=>{let low=0,high=breaks.length;while(low<high){const mid=(low+high)>>>1;if(breaks[mid]<offset)low=mid+1;else high=mid}return low}
-  const fields=(items:FieldValue[],depth:number)=>items.forEach(field=>{
-    const heading=fieldHeading(field,depth),start=source.indexOf(heading,cursor)
+  const fields=(items:FieldValue[],depth:number,schemas:FieldSchema[])=>items.forEach(field=>{
+    const schema=schemas.find(s=>s.id===field.schemaId),heading=fieldHeading(field,depth,schema),start=source.indexOf(heading,cursor)
     cursor=start+heading.length
     const valueStart=cursor+(field.value?1:0)
-    if(field.value)cursor=valueStart+escapeTextHeadings(field.value,true).length
+    if(field.value)cursor=valueStart+escapeTextHeadings(schema?.valueType==='Class'?referenceText(field.value):field.value,true).length
     locations[field.id]={key:line(start),value:field.value?line(valueStart):line(start),end:line(cursor)}
-    fields(field.children,depth+1)
+    fields(field.children,depth+1,schema?.children||[])
   })
   doc.entities.forEach(entity=>{
     const start=source.indexOf(`## ${entity.name}\n`,cursor)
     locations[entity.id]={key:line(start),value:line(start),end:line(start)}
     cursor=start+`## ${entity.name}\n`.length
-    fields(entity.fields,3)
+    fields(entity.fields,3,doc.schema)
   })
   return locations
 }
-export function exportFiles(world: World): Record<string,string> {
+export function exportFiles(world: World,documentIds?:ReadonlySet<string>): Record<string,string> {
   const files: Record<string,string>={}
   for(const doc of world.documents){
+    if(documentIds&&!documentIds.has(doc.id))continue
     const text=documentMarkdown(doc)
     // Validate before hitting the filesystem, including temporarily incomplete
     // code fences or duplicate names while editing. The source preview stays live.

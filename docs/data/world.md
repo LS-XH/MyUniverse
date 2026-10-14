@@ -74,9 +74,9 @@ TypedValue 使用世界 ValueType：Object 的 members 为数组并保留重复�
 
 生成成员仍是普通 FieldValue，但用户控件只读，保留独立 id 和既有 schemaId。新 Object 初始化的子成员继承来源。复制实例时重建递归成员 ID，并同步重映射 functionOrigin.bindingFieldId；不能把副本的所有权指回原实例。旧 functionResults 仅为历史读取兼容，工作区规范化清除，不作为新数据写出。
 
-来源注释由 [Markdown 格式](markdown.md#function-生成成员与来源元数据) 负责，添加范围、类型验证、调度与解绑清理由 [Function](../features/functions.md) 负责。组织仍使用 JSON，世界内容文件保持平铺，不迁移已有 user 目录。
+纯文本展示与来源保留规则由 [Markdown 格式](markdown.md#function-生成成员与来源元数据) 负责，添加范围、类型验证、调度与解绑清理由 [Function](../features/functions.md) 负责。组织仍使用 JSON，世界内容文件保持平铺，不迁移已有 user 目录。
 
-functionOrigin 与 functionRuns 只保存在工作区 JSON，不将内部索引或过程导出到正文。来源注释读取和身份恢复见 [Markdown 生成成员](markdown.md#function-生成成员与来源元数据)，所有权清理按函数 ID 与绑定成员 ID 配对，见 [绑定生命周期](../features/functions.md#显示来源和绑定生命周期)。
+functionOrigin 与 functionRuns 只保存在工作区 JSON，不将内部索引或过程导出到正文。无来源标记的填入与身份匹配见 [Markdown 生成成员](markdown.md#function-生成成员与来源元数据)，所有权清理按函数 ID 与绑定成员 ID 配对，见 [绑定生命周期](../features/functions.md#显示来源和绑定生命周期)。
 
 ## 应用配置对象
 
@@ -112,6 +112,6 @@ InterfaceView 的 parentClassId 指定数据源类，bindings 指定显示来源
 
 ## 生命周期
 
-启动加载 → 内存编辑/脚本事务 → 用户明确保存；显式刷新替换对应草稿。Agent 工作变量、无效源码草稿和页面会话分别维护，不代替持久对象。完整读写规则见 [草稿、保存与刷新](../features/persistence.md)。聊天对象见 [聊天数据](chat.md)，视图对象见 [视图数据](views.md)。
+JSON 启动加载 → 对象编辑/脚本事务 → 自动 JSON 存档；保存键显式导出 Markdown，刷新键显式导入 Markdown。Agent 工作变量、无效源码草稿和页面会话分别维护，不代替持久对象。完整读写规则见 [草稿、保存与刷新](../features/persistence.md)。聊天对象见 [聊天数据](chat.md)，视图对象见 [视图数据](views.md)。
 
 默认模板同时创建人物关系网和关系类型网；旧世界首次规范化安装关系类型网，World.relationGraphInstalled 标记完成，后续删除不自动恢复。

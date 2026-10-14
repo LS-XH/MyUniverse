@@ -18,19 +18,20 @@
 | --- | --- | --- |
 | 世界与类实例 | [世界对象](data/world.md) | Workspace/World、Schema、类型、身份、默认模板、生成来源 |
 | JSON 保存结构 | [JSON 存储](data/json-storage.md) | 文件布局、真实读写角色、样式/运行元数据及结构示例 |
-| Markdown 保存结构 | [Markdown 格式](data/markdown.md) | 标题、递归成员、引用、重复项、Content、来源注释和解析边界 |
+| Markdown 保存结构 | [Markdown 格式](data/markdown.md) | 标题、递归成员、引用、重复项、Content、纯文本引用和 JSON 填入边界 |
 | 界面投影 | [视图数据](data/views.md) | InterfaceView、current/fixed 路径、GraphStyle 和布局 |
-| 工作流 | [图与类型](data/workflow.md) | 图定义、七型信封、端口引用、消息/图片/能力集合及迁移 |
+| 工作流 | [图与类型](data/workflow.md) | 图定义、八型信封、端口引用、消息/图片/能力集合及迁移 |
 | 聊天 | [聊天数据](data/chat.md) | 消息、运行状态、模型协议、提议快照与编辑上下文 |
 
 ## 功能
 
 | 子对象 | 文档 | 内容 |
 | --- | --- | --- |
-| 数据生命周期 | [保存与刷新](features/persistence.md) | 内存草稿、当前/全部提交、显式读取、基线和失败 |
+| 数据生命周期 | [保存与刷新](features/persistence.md) | 唯一 JSON 存档、后台计算、渐进导入、限定导出、取消与失败 |
+| 运行诊断 | [运行日志](features/runtime-log.md) | 底部覆盖面板、带时间记录、后台与脚本输出、筛选与性能边界 |
 | Function | [函数设计](features/functions.md) | void/add、类型化参数、绑定作用域、所有权、重算、JS/Python/Flow |
 | Tool | [脚本与工具](features/tools.md) | 自由参数、事务、HTTP/JS、取消、MCP 内部适配 |
-| 官方工具 | [工具与建议](features/official-tools.md) | 九项调用、查询、新增/修改提议、批量采纳及回退 |
+| 官方工具 | [工具与建议](features/official-tools.md) | 十一项调用、查询、新增/修改提议、批量采纳及回退 |
 | 界面操作 | [人物关系网与地图](features/interface-views.md) | 人物专用关系、个人聚焦、过滤、源数据写回和地图 |
 | 工作流运行 | [执行设计](features/workflow-execution.md) | 依赖求值、循环、惰性条件、观察、取消与记忆 |
 | 模型能力 | [模型与 Agent](features/models-and-agents.md) | LLM、ToolCalls、子 Agent、模板和 ComfyUI |

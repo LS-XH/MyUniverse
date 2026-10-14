@@ -75,7 +75,7 @@
   --ui-shadow: 0 1px 4px var(--ui-shadow-1);
 }
 .ui-card--entity:has(.entity-header:active) {
-  transform: translateY(0) scale(var(--ui-card-press-x,1),var(--ui-card-press-y,1));
+  transform: translateY(1px);
   --ui-shadow: 0 1px 4px var(--ui-shadow-1);
 }
 .ui-card--entity:focus-within {

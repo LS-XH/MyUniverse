@@ -1,3 +1,4 @@
+import {walkWorkflowNodes} from './workflowScopes'
 import {conversationAgent} from './workflowTemplates'
 import {AgentDefinition,Workspace} from './types'
 
@@ -15,6 +16,6 @@ export function installToolUseTemplate(workspace:Workspace):Workspace {
 export function createToolUseExample(modelId?:string):AgentDefinition {
  const agent=conversationAgent(modelId,['builtin:list_classes'],[{role:'system',content:'你是世界对象查询助手。先调用工具查询，根据结果回答，不编造。'}],'LLM + ToolCalls · 查询世界类名')
  agent.variables.toolUseHistory=agent.variables.history;delete agent.variables.history
- for(const node of agent.graph.nodes)if(node.settings.name==='history')node.settings.name='toolUseHistory'
+ for(const node of walkWorkflowNodes(agent.graph))if(node.settings.name==='history')node.settings.name='toolUseHistory'
  return agent
 }

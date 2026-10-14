@@ -1,7 +1,7 @@
 import {FileActionsContext} from './FileActionsContext'
 import {saveProjection,dirtyTreeItems,dirtyEntityItems,type CreationFile} from '../model/manualSave'
-import {sameData} from '../model/merge'
-import { reconcileFunctionBindings } from '../model/functionAppend'
+import {functionFile} from '../model/functions'
+import { reconcileChangedFunctionBindings } from '../model/functionAppend'
 import type {ProposalAction} from '../model/types'
 import {chatTarget,mergeChatEvents,updateChatMessage} from '../model/chatRuns'
 import {editChatHistory} from '../model/chatRuns'
@@ -28,14 +28,20 @@ import PluginFolderContents from './PluginFolderContents'
 import { createPluginFolder, pluginSectionNames, pluginFolderPath, removePluginFolder } from '../model/pluginFolders'
 import FunctionsPage from './FunctionsPage'
 import { FunctionContext } from './FunctionContext'
-import { applyFunctionResult, functionJobs, runFunctionValue } from '../services/functions'
-import { functionFile } from '../model/functions'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { SaveAll, Bolt, ChevronRight, CircleHelp, Folder, Layers3, MessageCircle, PanelLeft, Puzzle, PencilLine, Plus, FolderPlus, Trash2, Settings, Settings2, Sparkles } from 'lucide-react'
+import {recomputeFunctions} from '../services/recompute'
+import {bindToolExecutor} from '../services/tools'
+import {executeToolInBackground} from '../services/toolExecutor'
+import {bindFunctionExecutor} from '../services/functions'
+import {executeFunctionInBackground} from '../services/functionExecutor'
+import useWorkspaceArchive from './useWorkspaceArchive'
+import RuntimeLogPanel from './RuntimeLogPanel'
+import {installRuntimeLogging} from '../services/runtimeLog'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Bolt, ChevronRight, CircleHelp, Folder, Layers3, MessageCircle, PanelLeft, Puzzle, PencilLine, Plus, FolderPlus, Trash2, Settings, Settings2, Sparkles, SquareTerminal } from 'lucide-react'
 import { createWorld } from '../model/templates'
 import { activeTheme, themeStyle } from '../model/themes'
 import { ChatMessage,Conversation,ClassDocument, ModelSection, PluginSection, Workspace, World } from '../model/types'
-import { applySyncResult, clearMarkdownConflict, loadWorkspace, MarkdownConflictError, reloadCreationFile,reloadPreferences, savedWorkspace, saveWorkspace,saveAttributeConfig } from '../services/storage'
+import { applySyncResult, applyImportProgress, loadWorkspace, reloadCreationFile,reloadPreferences, savedWorkspace, saveWorkspace } from '../services/storage'
 import { CollectionPage, GraphPage, ViewConfig, syncFields, viewIcon } from './App'
 import DocumentWorkspace from './DocumentWorkspace'
 import SchemaEditor from './SchemaEditor'
@@ -54,8 +60,14 @@ type Selection={nodeId:string;config?:boolean;entityId?:string;focusToken?:numbe
 type Page='create'|'plugins'|'models'|'settings'
 
 export default function AppRoot(){
+  useEffect(()=>installRuntimeLogging(),[])
+  const [logOpen,setLogOpen]=useState(false),closeLog=useCallback(()=>setLogOpen(false),[])
   const [workspace,rawSetWorkspace]=useState<Workspace>({worlds:[],activeWorldId:null,themeId:'violet',themes:[]})
-  const setWorkspace=(action:import('react').SetStateAction<Workspace>)=>{const next=reconcileFunctionBindings(typeof action==='function'?action(latest.current):action);latest.current=next;rawSetWorkspace(next)}
+  const setWorkspace=(action:import('react').SetStateAction<Workspace>)=>{
+    const previous=latest.current,candidate=typeof action==='function'?action(previous):action
+    const next=reconcileChangedFunctionBindings(previous,candidate)
+    latest.current=next;rawSetWorkspace(next)
+  }
   const [saved,setSaved]=useState<Workspace>({worlds:[],activeWorldId:null}),[fileBusy,setFileBusy]=useState(false)
   const persistence=useRef<{all:()=>Promise<void>;save:()=>Promise<void>;refresh:()=>Promise<void>}>({all:async()=>{},save:async()=>{},refresh:async()=>{}})
   const treeDrag=useTreeDrag((source,target,inside,after)=>setWorkspace(current=>moveTreeItem(current,source,target,inside,after)))
@@ -70,63 +82,68 @@ export default function AppRoot(){
   const [showProjects,setShowProjects]=useState(false)
   const [expanded,setExpanded]=useState<Record<string,boolean>>({})
   const [,setSaveStatus]=useState<'saved'|'saving'|'error'>('saved')
-  const [syncError,setSyncError]=useState(''),[loadError,setLoadError]=useState(''),[syncConflict,setSyncConflict]=useState<MarkdownConflictError|null>(null)
-  const latest=useRef(workspace),busy=useRef(false),conflictRef=useRef(syncConflict),errorRef=useRef(syncError)
+  const [syncError,setSyncError]=useState(''),[loadError,setLoadError]=useState('')
+  const latest=useRef(workspace),busy=useRef(false)
   const chatRequests=useRef(new Map<string,AbortController>())
   const [chatRuns,setChatRuns]=useState<Record<string,{pending:boolean;error?:string}>>({})
   useEffect(()=>()=>{chatRequests.current.forEach(controller=>controller.abort())},[])
-  latest.current=workspace;conflictRef.current=syncConflict;errorRef.current=syncError
+  latest.current=workspace
   const [dialog,setDialog]=useState<{title:string;value:string;onSubmit:(value:string)=>void}|null>(null)
   useEffect(()=>{loadWorkspace().then(loaded=>{const next=installToolUseTemplate(loaded);setSaved(savedWorkspace()||loaded);setWorkspace(next);setReady(true);const current=next.worlds.find(world=>world.id===next.activeWorldId)||next.worlds[0];if(current){setSelection({nodeId:current.id});setExpanded({[current.id]:true,...Object.fromEntries(current.nodes.filter(node=>node.type==='collection').map(node=>[node.id,true]))})}}).catch(error=>setLoadError(String(error)))},[])
   useEffect(()=>bindScriptHost({autoSave:false,get:()=>latest.current,update:change=>setWorkspace(change),save:async()=>{if(!busy.current)await persistence.current.all()}}),[])
+  useEffect(()=>bindFunctionExecutor(executeFunctionInBackground),[])
+  useEffect(()=>bindToolExecutor(executeToolInBackground),[])
   useEffect(()=>onInstanceProposal(event=>{const next=appendInstanceProposal(latest.current,event);latest.current=next;setWorkspace(next)}),[])
   const decideProposal=(worldId:string,conversationId:string,proposalId:string,save:ProposalAction,ids?:string[])=>{
     const next=ids?decideInstanceProposals(latest.current,worldId,conversationId,ids,save):decideInstanceProposal(latest.current,worldId,conversationId,proposalId,save);latest.current=next;setWorkspace(next)
   }
-  const handleSyncError=(error:unknown)=>{setSaveStatus('error');setSyncError(error instanceof Error?error.message:String(error));if(error instanceof MarkdownConflictError)setSyncConflict(error)}
-  const reloadMarkdown=()=>{void persistence.current.refresh()}
-  const resolveSyncConflict=(choice:'local'|'remote')=>{if(!syncConflict)return;const selected=choice==='local'?syncConflict.local:syncConflict.remote;clearMarkdownConflict();setWorkspace(current=>applySyncResult(syncConflict.submitted,current,selected));setSyncConflict(null);setSyncError('')}
+  const handleSyncError=(error:unknown)=>{setSaveStatus('error');setSyncError(error instanceof Error?error.message:String(error))}
+  const archiveStatus=useWorkspaceArchive(workspace,ready)
   const world=workspace.worlds.find(item=>item.id===workspace.activeWorldId)||workspace.worlds[0]
   const node=world?.nodes.find(item=>item.id===selection?.nodeId)
   const doc=world?.documents.find(item=>item.id===node?.classId)
   const currentFile:CreationFile|undefined=page==='create'&&world&&!showProjects?{worldId:world.id,kind:node?.type==='file'?'document':node?.viewType==='chat'?'chat':node?.type==='view'?'view':'world',id:node?.type==='file'?(doc?.id||node.classId||node.id):(node?.id||world.id)}:undefined
   const attributePage=page==='create'&&node?.type==='file'&&!!selection?.config
-  const flushDraft=()=>{const event=new Event('flush-document-draft',{cancelable:true});if(!window.dispatchEvent(event))throw new Error('Markdown 格式有误，请修正后再保存')}
   const persist=async(all=false)=>{
     if(!ready||busy.current)return
     busy.current=true;setFileBusy(true)
     try{
-      if(!all&&attributePage&&world&&doc){await saveAttributeConfig(latest.current,world.id,doc.id);setSaved(savedWorkspace()||saved);setSyncError('');return}
-      flushDraft();if(conflictRef.current)throw conflictRef.current
       const current=latest.current,submitted=all?current:saveProjection(current,savedWorkspace()||saved,currentFile)
-      const result=await saveWorkspace(submitted,all?undefined:currentFile?.kind==='document'?[`${currentFile.worldId}/${currentFile.id}`]:[],all?undefined:currentFile||'preferences')
-      setSaved(savedWorkspace()||result);setWorkspace(next=>applySyncResult(submitted,next,result));setSaveStatus('saved');setSyncError('')
+      await archiveStatus.flush(current)
+      const result=await saveWorkspace(submitted,undefined,all?undefined:currentFile||'preferences')
+      setSaved(result);setSaveStatus('saved');setSyncError('')
     }catch(error){handleSyncError(error)}finally{busy.current=false;setFileBusy(false)}
   }
   const [refreshProgress,setRefreshProgress]=useState<number|null>(null)
+  const operation=useRef<AbortController|null>(null)
+  useEffect(()=>()=>operation.current?.abort(),[])
+  const runCalculation=async(scope:CreationFile,signal:AbortSignal)=>{
+    const docId=scope.kind==='document'?scope.id:scope.kind==='view'?latest.current.worlds.find(w=>w.id===scope.worldId)?.views?.[scope.id]?.parentClassId:undefined
+    await recomputeFunctions(()=>latest.current,setWorkspace,{worldId:scope.worldId,docId},(done,total)=>setRefreshProgress(.2+.8*done/Math.max(1,total)),signal)
+  }
+  const recomputeCurrent=async()=>{
+    if(!ready||busy.current||!currentFile)return
+    busy.current=true;setFileBusy(true);setRefreshProgress(.05);const controller=new AbortController();operation.current=controller
+    try{await runCalculation(currentFile,controller.signal);setSyncError('')}catch(error){if(!controller.signal.aborted)handleSyncError(error)}finally{operation.current=null;setRefreshProgress(null);busy.current=false;setFileBusy(false)}
+  }
   const refreshCurrent=async()=>{
     if(!ready||busy.current||attributePage)return
-    busy.current=true;setFileBusy(true);setRefreshProgress(0.08)
+    busy.current=true;setFileBusy(true);setRefreshProgress(.05);const controller=new AbortController();operation.current=controller
     try{
-      if(!currentFile){const submitted=latest.current,result=await reloadPreferences(submitted);setWorkspace(current=>applySyncResult(submitted,current,result));setSaved(savedWorkspace()||saved);setSyncError('');return}
-      window.dispatchEvent(new Event('cancel-document-draft'))
-      const scope=currentFile,submitted=latest.current,result=await reloadCreationFile(submitted,scope)
-      setWorkspace(current=>applySyncResult(submitted,current,result));setSaved(savedWorkspace()||saved)
-      window.dispatchEvent(new Event('reset-document-draft'))
-      const docId=scope.kind==='document'?scope.id:scope.kind==='view'?latest.current.worlds.find(w=>w.id===scope.worldId)?.views?.[scope.id]?.parentClassId:undefined
-      const jobs=functionJobs(latest.current,true).filter(job=>job.worldId===scope.worldId&&(!docId||job.docId===docId))
-      setRefreshProgress(.2)
-      for(const [index,initial] of jobs.entries()){
-        setRefreshProgress(.2+.8*index/Math.max(1,jobs.length))
-        const job=functionJobs(latest.current,true).find(j=>j.worldId===initial.worldId&&j.docId===initial.docId&&j.fieldId===initial.fieldId&&j.fn.id===initial.fn.id);if(!job)continue
-        let output:Awaited<ReturnType<typeof runFunctionValue>>={value:''},error:string|undefined
-        try{if(job.error)throw new Error(job.error);output=await runFunctionValue(job.fn,job.input,latest.current.worlds.find(w=>w.id===job.worldId),job.context,undefined,job)}catch(failure){error=String(failure)}
-        setWorkspace(current=>applyFunctionResult(current,job,{functionId:job.fn.id,name:job.fn.name,fileName:`../../functions/${functionFile(job.fn)}`,input:job.input,...output,source:job.source,...(job.contextKey?{contextKey:job.contextKey}:{}),...(error?{error}:{})}))
-        await new Promise<void>(resolve=>setTimeout(resolve,0))
-      }
-      setRefreshProgress(1)
-      setSyncError('')
-    }catch(error){handleSyncError(error)}finally{setRefreshProgress(null);busy.current=false;setFileBusy(false)}
+      if(!currentFile){const submitted=latest.current,result=await reloadPreferences(submitted);setWorkspace(current=>applySyncResult(submitted,current,result));return}
+      const scope=currentFile,submitted=latest.current
+      const result=await reloadCreationFile(submitted,scope,{signal:controller.signal,onProgress:progress=>{
+        setWorkspace(current=>({...current,worlds:current.worlds.map(w=>w.id!==progress.worldId?w:{...w,documents:w.documents.map(d=>{
+          if(d.id!==progress.docId)return d
+          return applyImportProgress(d,progress)
+        })})}))
+        setRefreshProgress(.05+.15*progress.completed/Math.max(1,progress.total))
+      }})
+      // Only view/chat imports need a final state replacement; document cards were committed incrementally.
+      if(scope.kind==='view'||scope.kind==='chat')setWorkspace(current=>applySyncResult(submitted,current,result))
+      await runCalculation(scope,controller.signal)
+      setRefreshProgress(1);setSyncError('')
+    }catch(error){if(!controller.signal.aborted)handleSyncError(error)}finally{operation.current=null;setRefreshProgress(null);busy.current=false;setFileBusy(false)}
   }
   persistence.current={all:()=>persist(true),save:()=>persist(),refresh:refreshCurrent}
   useEffect(()=>{
@@ -135,8 +152,6 @@ export default function AppRoot(){
   },[page])
   const dirty=useMemo(()=>new Map(workspace.worlds.map(w=>[w.id,dirtyTreeItems(w,saved.worlds.find(v=>v.id===w.id))])),[workspace.worlds,saved.worlds])
   const dirtyEntities=useMemo(()=>doc?dirtyEntityItems(doc,saved.worlds.find(w=>w.id===world?.id)?.documents.find(d=>d.id===doc.id)):new Set<string>(),[doc,world?.id,saved.worlds])
-  const creationDirty=!sameData({...workspace,activeWorldId:null},{...saved,activeWorldId:null})
-  useEffect(()=>{const warn=(event:BeforeUnloadEvent)=>{if(creationDirty){event.preventDefault();event.returnValue=''}};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn)},[creationDirty])
   const theme=activeTheme(workspace)
   const setWorld=(next:World)=>setWorkspace(current=>({...current,worlds:current.worlds.map(item=>item.id===next.id?next:item)}))
   const sendChat=async(content:string,editId?:string)=>{
@@ -223,7 +238,7 @@ export default function AppRoot(){
     if(!world)return <div className="welcome"><div className="welcome-symbol ui-icon-surface--welcome ui-surface ui-icon-surface ui-icon-surface--themed ui-icon-surface--text"><Sparkles size={34}/></div><div className="eyebrow">YOUR CREATIVE UNIVERSE</div><h1>从一个世界开始</h1><p>把人物、势力、地点与事件编织成属于你的故事。</p><button className="primary ui-button--primary big ui-surface ui-button ui-button--standard" onClick={addWorld}><Plus size={19}/> 创建世界</button></div>
     if(selection?.nodeId===world.id||!node)return <CollectionPage world={world} node={{id:world.id,name:world.name,type:'collection',parentId:null}} root onDeleteProject={removeWorld} onChange={setWorld} onSelect={selectNode} ask={ask}/>
     if(node.type==='collection')return <CollectionPage world={world} node={node} onChange={setWorld} onSelect={selectNode} ask={ask}/>
-    if(node.type==='file'&&doc)return selection?.config?<SchemaEditor world={world} doc={doc} onChange={next=>{setDoc(next);void saveAttributeConfig(latest.current,world.id,next.id).then(()=>{setSaved(savedWorkspace()||saved);setSyncError('')}).catch(handleSyncError)}}/>:<DocumentWorkspace key={doc.id} focusEntity={selection?.entityId} focusToken={selection?.focusToken} world={world} doc={doc} onChange={setDoc} onDelete={removeDoc} onNewView={()=>setInterfaceParent({worldId:world.id,classId:doc.id,parentId:node.id})}/>
+    if(node.type==='file'&&doc)return selection?.config?<SchemaEditor world={world} doc={doc} onChange={setDoc}/>:<DocumentWorkspace key={doc.id} focusEntity={selection?.entityId} focusToken={selection?.focusToken} world={world} doc={doc} onChange={setDoc} onDelete={removeDoc} onNewView={()=>setInterfaceParent({worldId:world.id,classId:doc.id,parentId:node.id})}/>
     if(isGraphKind(node.viewType)||node.viewType==='map'){
       const storedView=world.views?.[node.id],view=storedView&&isGraphKind(storedView.kind)?graphView(world,storedView):storedView
       if(!view)return <div className="loading">界面父类型已不存在，请重新创建界面。</div>
@@ -242,5 +257,5 @@ export default function AppRoot(){
     try{await invoke('reveal_file',{components:fileLocation})}catch(error){handleSyncError(error)}
   }
   const folderPage=page==='create'?(showProjects||!selection?.config&&(!node||node.type==='collection')):page==='plugins'?(pluginSection==='functions'?!selectedFunction:pluginSection==='tools'?!selectedTool:true):page==='models'?!selectedModelId:false
-  return <FileActionsContext.Provider value={currentFile?{save:()=>{void persist()},refresh:()=>{void refreshCurrent()},busy:fileBusy,dirtyEntities,savedDocument:saved.worlds.find(w=>w.id===world?.id)?.documents.find(d=>d.id===doc?.id)}:null}><FunctionContext.Provider value={workspace.functions||[]}><div className={`app-shell ${sidebarCollapsed?'sidebar-collapsed':''}`} onClick={()=>setSidebarMenu(null)} onContextMenu={event=>{event.preventDefault();const target=event.target as HTMLElement,button=target.closest('.sidebar .tree-main,.sidebar .settings-tree-heading,.sidebar .model-nav-row,.sidebar .theme-nav-row');if(button&&!button.classList.contains('projects-heading')){setSidebarMenu({x:event.clientX,y:event.clientY,target:button as HTMLButtonElement,names:JSON.parse((button as HTMLElement).dataset.contextActions||'[]')})}}} style={themeStyle(theme.colors)} data-theme={theme.id}><nav className="rail"><div className="brand-mark ui-icon-surface--brand ui-surface ui-icon-surface"><Sparkles size={21}/></div><div className="rail-items"><span className="rail-selection" aria-hidden="true" style={{transform:`translateY(${({create:0,plugins:1,models:2,settings:3}[page])*52}px)`}}/><button title="创作" className={`${page==='create'?'active':''} ui-surface ui-button`} onClick={()=>{setPage('create')}}><PencilLine size={21}/></button><button title="插件" className={`${page==='plugins'?'active':''} ui-surface ui-button`} onClick={()=>setPage('plugins')}><Puzzle size={21}/></button><button title="模型" className={`${page==='models'?'active':''} ui-surface ui-button`} onClick={()=>setPage('models')}><Sparkles size={21}/></button><button title="设置" className={`${page==='settings'?'active':''} ui-surface ui-button`} onClick={()=>setPage('settings')}><Bolt size={21}/></button></div><div className="rail-bottom"><button title="帮助" className="ui-surface ui-button"><CircleHelp size={19}/></button><div className="user-avatar ui-avatar--user ui-surface ui-avatar">U</div></div></nav><div className="sidebar-region" onPointerDown={treeDrag} inert={sidebarCollapsed} aria-hidden={sidebarCollapsed}>{renderSidebar()}</div><button className="sidebar-toggle ui-button--sidebar-toggle icon-button ui-button--icon ui-surface ui-button" title={sidebarCollapsed?'展开侧边栏':'收起侧边栏'} aria-label={sidebarCollapsed?'展开侧边栏':'收起侧边栏'} aria-expanded={!sidebarCollapsed} onClick={()=>{setSidebarCollapsed(!sidebarCollapsed);setSidebarMenu(null)}}><PanelLeft size={20}/></button><main className={`main-area ${folderPage?'folder-page':'object-page'}`}><div className="topbar"><div className="breadcrumbs">{(page==='plugins'?['插件',pluginSectionNames[pluginSection],...pluginFolderPath(workspace,pluginFolderId).map(f=>f.name),...(selectedFunction?[workspace.functions?.find(f=>f.id===selectedFunction)?.name||'未命名']:selectedTool?[registeredTools(workspace).find(t=>t.id===selectedTool)?.name||'未命名']:[])]:page==='models'?['模型',modelSectionNames[modelSection],...(selectedModelId?[(modelSection==='llm'?workspace.models:modelSection==='sd'?workspace.sdWorkflows:workspace.agents)?.find(m=>m.id===selectedModelId)?.name||'未命名']:[])]:page==='settings'?['设置']:showProjects?['我的项目']:[world?.name||'我的宇宙',...(node?[node.name+(selection?.config?' / 配置':'')]:[])]).map((part,index)=><span className="breadcrumb-part" key={index}>{index>0&&<ChevronRight size={14}/>}<span>{part}</span></span>)}</div><TopbarActions revision={pageKey} location={fileLocation} onReveal={revealLocation} fileActions={ready&&!attributePage?{save:()=>{void persist()},refresh:()=>{void refreshCurrent()},busy:fileBusy}:undefined}/><button className="global-save-all icon-button ui-button--icon ui-surface ui-button" aria-label="保存全部文件" title="保存全部文件" disabled={!ready||fileBusy} onClick={()=>{void persist(true)}}><SaveAll size={20}/></button></div><div className={`topbar-progress ${refreshProgress!==null?'is-active':''}`} role="progressbar" aria-label="重新读取文件并计算函数" aria-valuemin={0} aria-valuemax={100} aria-valuenow={refreshProgress===null?undefined:Math.round(refreshProgress*100)} aria-hidden={refreshProgress===null}><span style={{transform:`scaleX(${refreshProgress??0})`}}/></div>{syncError&&<div className="markdown-sync-banner ui-alert--sync ui-surface ui-alert" role="alert"><span>{syncError}</span>{syncConflict?<div><button className="ghost ui-button--ghost ui-surface ui-button ui-button--standard" onClick={()=>resolveSyncConflict('remote')}>采用文件内容</button><button className="ghost ui-button--ghost ui-surface ui-button ui-button--standard" onClick={()=>resolveSyncConflict('local')}>保留界面内容</button></div>:<button className="ghost ui-button--ghost ui-surface ui-button ui-button--standard" onClick={reloadMarkdown}>重新读取</button>}</div>}{<PageSession key={pageKey} memory={memories.current.get(pageKey)!}>{renderMain()}</PageSession>}</main>{interfaceParent&&workspace.worlds.find(w=>w.id===interfaceParent.worldId)&&<CreateInterfaceDialog world={workspace.worlds.find(w=>w.id===interfaceParent.worldId)!} parentId={interfaceParent.parentId} initialClassId={interfaceParent.classId} onChange={setWorld} onSelect={selectNode} onClose={()=>setInterfaceParent(null)}/>}<SidebarActions target={sidebarMenu?.target} names={sidebarMenu?.names} position={sidebarMenu} revision={pageKey+JSON.stringify(workspace.functions?.map(fn=>fn.id))} onClose={()=>setSidebarMenu(null)}/>{dialog&&<div className="modal-backdrop" onPointerDown={()=>setDialog(null)}><div className="modal ui-dialog--standard ui-surface ui-dialog ui-dialog--themed ui-dialog--text" onPointerDown={event=>event.stopPropagation()}><div className="eyebrow">CREATE IN MYUNIVERSE</div><h2>{dialog.title}</h2><input autoFocus value={dialog.value} onChange={event=>setDialog({...dialog,value:event.target.value})} onKeyDown={event=>{if(event.key==='Enter')submitDialog();if(event.key==='Escape')setDialog(null)}} className="ui-surface ui-field"/><div className="modal-actions"><button className="ghost ui-button--ghost ui-surface ui-button ui-button--standard" onClick={()=>setDialog(null)}>取消</button><button className="primary ui-button--primary ui-surface ui-button ui-button--standard" onClick={submitDialog}>确认创建</button></div></div></div>}</div></FunctionContext.Provider></FileActionsContext.Provider>
+  return <FileActionsContext.Provider value={currentFile?{save:()=>{void persist()},refresh:()=>{void refreshCurrent()},busy:fileBusy,recompute:()=>{void recomputeCurrent()},cancel:()=>operation.current?.abort(),dirtyEntities,savedDocument:saved.worlds.find(w=>w.id===world?.id)?.documents.find(d=>d.id===doc?.id)}:null}><FunctionContext.Provider value={workspace.functions||[]}><div className={`app-shell ${sidebarCollapsed?'sidebar-collapsed':''}`} onClick={()=>setSidebarMenu(null)} onContextMenu={event=>{event.preventDefault();const target=event.target as HTMLElement,button=target.closest('.sidebar .tree-main,.sidebar .settings-tree-heading,.sidebar .model-nav-row,.sidebar .theme-nav-row');if(button&&!button.classList.contains('projects-heading')){setSidebarMenu({x:event.clientX,y:event.clientY,target:button as HTMLButtonElement,names:JSON.parse((button as HTMLElement).dataset.contextActions||'[]')})}}} style={themeStyle(theme.colors)} data-theme={theme.id}><nav className="rail"><div className="brand-mark ui-icon-surface--brand ui-surface ui-icon-surface"><Sparkles size={21}/></div><div className="rail-items"><span className="rail-selection" aria-hidden="true" style={{transform:`translateY(${({create:0,plugins:1,models:2,settings:3}[page])*52}px)`}}/><button title="创作" className={`${page==='create'?'active':''} ui-surface ui-button`} onClick={()=>{setPage('create')}}><PencilLine size={21}/></button><button title="插件" className={`${page==='plugins'?'active':''} ui-surface ui-button`} onClick={()=>setPage('plugins')}><Puzzle size={21}/></button><button title="模型" className={`${page==='models'?'active':''} ui-surface ui-button`} onClick={()=>setPage('models')}><Sparkles size={21}/></button><button title="设置" className={`${page==='settings'?'active':''} ui-surface ui-button`} onClick={()=>setPage('settings')}><Bolt size={21}/></button></div><div className="rail-bottom"><button title="帮助" className="ui-surface ui-button"><CircleHelp size={19}/></button><button className={`runtime-log-toggle ${logOpen?"is-open":""} ui-surface ui-button`} title={logOpen?"收起日志":"打开日志"} aria-label="日志输出" aria-controls="runtime-log-panel" aria-expanded={logOpen} aria-pressed={logOpen} onClick={()=>setLogOpen(open=>!open)}><SquareTerminal size={20}/></button><div className="user-avatar ui-avatar--user ui-surface ui-avatar">U</div></div></nav><div className="sidebar-region" onPointerDown={treeDrag} inert={sidebarCollapsed} aria-hidden={sidebarCollapsed}>{renderSidebar()}</div><button className="sidebar-toggle ui-button--sidebar-toggle icon-button ui-button--icon ui-surface ui-button" title={sidebarCollapsed?'展开侧边栏':'收起侧边栏'} aria-label={sidebarCollapsed?'展开侧边栏':'收起侧边栏'} aria-expanded={!sidebarCollapsed} onClick={()=>{setSidebarCollapsed(!sidebarCollapsed);setSidebarMenu(null)}}><PanelLeft size={20}/></button><main className={`main-area ${folderPage?'folder-page':'object-page'}`}><div className="topbar"><div className="breadcrumbs">{(page==='plugins'?['插件',pluginSectionNames[pluginSection],...pluginFolderPath(workspace,pluginFolderId).map(f=>f.name),...(selectedFunction?[workspace.functions?.find(f=>f.id===selectedFunction)?.name||'未命名']:selectedTool?[registeredTools(workspace).find(t=>t.id===selectedTool)?.name||'未命名']:[])]:page==='models'?['模型',modelSectionNames[modelSection],...(selectedModelId?[(modelSection==='llm'?workspace.models:modelSection==='sd'?workspace.sdWorkflows:workspace.agents)?.find(m=>m.id===selectedModelId)?.name||'未命名']:[])]:page==='settings'?['设置']:showProjects?['我的项目']:[world?.name||'我的宇宙',...(node?[node.name+(selection?.config?' / 配置':'')]:[])]).map((part,index)=><span className="breadcrumb-part" key={index}>{index>0&&<ChevronRight size={14}/>}<span>{part}</span></span>)}</div><TopbarActions saveAll={{run:()=>{void persist(true)},disabled:!ready||fileBusy}} revision={pageKey} location={fileLocation} onReveal={revealLocation} fileActions={ready&&!attributePage?{save:()=>{void persist()},refresh:()=>{void refreshCurrent()},busy:fileBusy}:undefined}/></div><div className={`topbar-progress ${refreshProgress!==null?'is-active':''}`} role="progressbar" aria-label="导入文件并填入 JSON" aria-valuemin={0} aria-valuemax={100} aria-valuenow={refreshProgress===null?undefined:Math.round(refreshProgress*100)} aria-hidden={refreshProgress===null}><span style={{transform:`scaleX(${refreshProgress??0})`}}/></div>{(syncError||archiveStatus.error)&&<div className="markdown-sync-banner ui-alert--sync ui-surface ui-alert" role="alert"><span>{syncError||archiveStatus.error}</span><button className="ghost ui-button--ghost ui-surface ui-button ui-button--standard" onClick={()=>{void archiveStatus.flush().catch(handleSyncError)}}>重试 JSON 存档</button></div>}{refreshProgress!==null&&<button className="ghost ui-button--ghost ui-surface ui-button ui-button--standard" onClick={()=>operation.current?.abort()}>停止当前任务</button>}<span className="archive-status" role="status">{archiveStatus.status==='pending'?'JSON 存档中…':archiveStatus.status==='error'?'JSON 存档失败':'JSON 已存档'}</span>{<PageSession key={pageKey} memory={memories.current.get(pageKey)!}>{renderMain()}</PageSession>}</main><RuntimeLogPanel open={logOpen} onClose={closeLog}/>{interfaceParent&&workspace.worlds.find(w=>w.id===interfaceParent.worldId)&&<CreateInterfaceDialog world={workspace.worlds.find(w=>w.id===interfaceParent.worldId)!} parentId={interfaceParent.parentId} initialClassId={interfaceParent.classId} onChange={setWorld} onSelect={selectNode} onClose={()=>setInterfaceParent(null)}/>}<SidebarActions target={sidebarMenu?.target} names={sidebarMenu?.names} position={sidebarMenu} revision={pageKey+JSON.stringify(workspace.functions?.map(fn=>fn.id))} onClose={()=>setSidebarMenu(null)}/>{dialog&&<div className="modal-backdrop" onPointerDown={()=>setDialog(null)}><div className="modal ui-dialog--standard ui-surface ui-dialog ui-dialog--themed ui-dialog--text" onPointerDown={event=>event.stopPropagation()}><div className="eyebrow">CREATE IN MYUNIVERSE</div><h2>{dialog.title}</h2><input autoFocus value={dialog.value} onChange={event=>setDialog({...dialog,value:event.target.value})} onKeyDown={event=>{if(event.key==='Enter')submitDialog();if(event.key==='Escape')setDialog(null)}} className="ui-surface ui-field"/><div className="modal-actions"><button className="ghost ui-button--ghost ui-surface ui-button ui-button--standard" onClick={()=>setDialog(null)}>取消</button><button className="primary ui-button--primary ui-surface ui-button ui-button--standard" onClick={submitDialog}>确认创建</button></div></div></div>}</div></FunctionContext.Provider></FileActionsContext.Provider>
 }

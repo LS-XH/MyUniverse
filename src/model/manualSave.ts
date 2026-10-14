@@ -1,4 +1,3 @@
-import {documentMarkdown,entityMarkdown} from './markdown'
 import {sameData} from './merge'
 import {ClassDocument,Workspace,World} from './types'
 export type CreationFile={worldId:string;kind:'document'|'view'|'chat'|'world';id:string}
@@ -34,7 +33,7 @@ export function dirtyTreeItems(world:World,saved?:World):Set<string>{
  if(!saved){dirty.add(world.id);world.nodes.forEach(n=>dirty.add(n.id));return dirty}
  world.nodes.forEach(n=>{
   const old=saved.nodes.find(v=>v.id===n.id)
-  if(!sameData(n,old)||n.type==='file'&&!sameData(documentState(world.documents.find(d=>d.id===n.classId)),documentState(saved.documents.find(d=>d.id===n.classId)))||n.type==='view'&&!sameData(n.viewType==='chat'?world.chat:world.views?.[n.id],n.viewType==='chat'?saved.chat:saved.views?.[n.id]))dirty.add(n.id)
+  if(!sameData(n,old)||n.type==='file'&&!sameDocumentContent(world.documents.find(d=>d.id===n.classId),saved.documents.find(d=>d.id===n.classId))||n.type==='view'&&!sameData(n.viewType==='chat'?world.chat:world.views?.[n.id],n.viewType==='chat'?saved.chat:saved.views?.[n.id]))dirty.add(n.id)
  })
  const parents=new Set([...world.nodes,...saved.nodes].map(n=>n.parentId))
  for(const parent of parents)if(!sameData(world.nodes.filter(n=>n.parentId===parent).map(n=>n.id),saved.nodes.filter(n=>n.parentId===parent).map(n=>n.id)))dirty.add(parent||world.id)
@@ -50,8 +49,15 @@ export function dirtyEntityItems(doc:ClassDocument,saved?:ClassDocument):Set<str
  const baseline=new Map(saved?.entities.map((entity,index)=>[entity.id,{entity,index}]))
  return new Set(doc.entities.filter((entity,index)=>{
   const old=baseline.get(entity.id),label=doc.entityLabels?.[entity.id],oldLabel=saved?.entityLabels?.[entity.id]
-  return !old||old.index!==index||entityMarkdown(entity)!==entityMarkdown(old.entity)||label!==oldLabel||!sameData(doc.labels?.find(v=>v.id===label),saved?.labels?.find(v=>v.id===oldLabel))
+  return !old||old.index!==index||entity.name!==old.entity.name||!sameFieldContent(entity.fields,old.entity.fields)||label!==oldLabel||!sameData(doc.labels?.find(v=>v.id===label),saved?.labels?.find(v=>v.id===oldLabel))
  }).map(entity=>entity.id))
 }
 
-function documentState(doc?:ClassDocument){return doc?{markdown:documentMarkdown(doc),schema:doc.schema,fileName:doc.fileName,labels:doc.labels,entityLabels:doc.entityLabels}:undefined}
+function sameFieldContent(left:ClassDocument['entities'][number]['fields'],right:ClassDocument['entities'][number]['fields']):boolean{
+ return left===right||left.length===right.length&&left.every((f,i)=>{const r=right[i];return f===r||f.key===r.key&&f.value===r.value&&f.functionOrigin?.name===r.functionOrigin?.name&&sameFieldContent(f.children,r.children)})
+}
+function sameDocumentContent(doc?:ClassDocument,old?:ClassDocument):boolean{
+ if(doc===old)return true
+ if(!doc||!old)return false
+ return doc.name===old.name&&doc.fileName===old.fileName&&sameData(doc.schema,old.schema)&&sameData(doc.labels,old.labels)&&sameData(doc.entityLabels,old.entityLabels)&&doc.entities.length===old.entities.length&&doc.entities.every((e,i)=>e===old.entities[i]||e.name===old.entities[i].name&&sameFieldContent(e.fields,old.entities[i].fields))
+}

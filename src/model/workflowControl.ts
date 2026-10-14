@@ -1,77 +1,48 @@
 import {WorkflowGraph,WorkflowNode} from './types'
-import {defaultVariable,strictValue,variablePort,variableTypes,VariableType} from './workflowValues'
-
-export function controlType(node:WorkflowNode):VariableType {
- const type=node.settings.variableType as VariableType
- if(!variableTypes.includes(type))throw new Error('流程控制必须指定严格类型')
+import {defaultVariable,variablePort,variableTypes,VariableType} from './workflowValues'
+import {newScopeGraph} from './workflowScopes'
+export type ControlType=Exclude<VariableType,'Method'>|'ANY'
+export function controlType(node:WorkflowNode):ControlType {
+ const type=node.settings.variableType as ControlType
+ if(type!=='ANY'&&(!variableTypes.includes(type)||type as string==='Method'))throw new Error('条件必须指定值类型或 ANY')
  return type
 }
-export function configureControl(node:WorkflowNode,type:VariableType):WorkflowNode {
- const port=variablePort(type),value=defaultVariable(type)
- return {...node,settings:{...node.settings,variableType:type},inputs:node.kind==='loop'?
-  [{name:'initial',type:port,default:value},{name:'next',type:port,required:true},{name:'continue',type:'BOOLEAN',default:false}]:
-  [{name:'condition',type:'BOOLEAN',default:false},{name:'trueValue',type:port,default:value},{name:'falseValue',type:port,default:value}],
- outputs:node.kind==='loop'?[{name:'current',type:port},{name:'iteration',type:'NUMBER'},{name:'result',type:port}]:[{name:'value',type:port}]}
+export function configureControl(node:WorkflowNode,type:ControlType='ANY'):WorkflowNode {
+ if(node.kind==='loop')return {...node,settings:{repeat:'1'},body:node.body||newScopeGraph('loop'),inputs:[{name:'value',type:'ANY'}],outputs:[{name:'value',type:'ANY'}]}
+ const port=type==='ANY'?'ANY':variablePort(type),value=type==='ANY'?undefined:defaultVariable(type)
+ return {...node,settings:{...node.settings,variableType:type},inputs:[{name:'condition',type:'BOOLEAN',default:false},{name:'trueValue',type:port,default:value},{name:'falseValue',type:port,default:value}],outputs:[{name:'value',type:port}]}
 }
-/** Bodies are dependency closures, stopping at the owner and its initial dependencies. */
-export function loopBodies(graph:WorkflowGraph):Map<string,Set<string>> {
- const bodies=new Map<string,Set<string>>()
- const ancestors=(id:string,stop:Set<string>,found=new Set<string>(),output?:string)=>{
-  if(stop.has(id)||found.has(id))return found
-  found.add(id)
-  if(graph.nodes.find(n=>n.id===id)?.kind==='loop'&&['current','iteration'].includes(output||''))return found
-  for(const edge of graph.links.filter(e=>e.to===id))ancestors(edge.from,stop,found,edge.output)
-  return found
- }
- for(const loop of graph.nodes.filter(n=>n.kind==='loop')){
-  const external=new Set<string>([loop.id])
-  for(const edge of graph.links.filter(e=>e.to===loop.id&&e.input==='initial'))for(const id of ancestors(edge.from,new Set([loop.id]),new Set(),edge.output))external.add(id)
-  const body=new Set<string>()
-  for(const edge of graph.links.filter(e=>e.to===loop.id&&['next','continue'].includes(e.input)))ancestors(edge.from,external,body,edge.output)
-  bodies.set(loop.id,body)
- }
- return bodies
+export function configureSequence(node:WorkflowNode,count:number):WorkflowNode {
+ if(!Number.isSafeInteger(count)||count<1||count>64)throw new Error('顺序执行分支数量必须为 1–64')
+ const inputs=Array.from({length:count},(_,i)=>({name:`branch${i+1}`,type:'ANY'}))
+ const settings={...node.settings};for(const key of Object.keys(settings))if(key.startsWith('port:')&&!inputs.some(p=>key===`port:${p.name}`))delete settings[key]
+ return {...node,settings,inputs,outputs:inputs.map(p=>({...p})),bindings:Object.fromEntries(Object.entries(node.bindings||{}).filter(([key])=>inputs.some(p=>key.slice(key.indexOf(':')+1)===p.name)))}
 }
-export function validateControl(graph:WorkflowGraph,complete=true):void {
- const bodies=loopBodies(graph)
- const affected=new Map<string,Set<string>>()
- for(const [id,body] of bodies){
-  const reached=new Set<string>(),queue=graph.links.filter(e=>e.from===id&&['current','iteration'].includes(e.output)).map(e=>e.to)
-  while(queue.length){const node=queue.shift()!;if(!body.has(node)||reached.has(node))continue;reached.add(node);queue.push(...graph.links.filter(e=>e.from===node).map(e=>e.to))}
-  affected.set(id,reached)
- }
- for(const node of graph.nodes.filter(n=>n.kind==='loop'||n.kind==='condition')){
-  const type=controlType(node),expected=configureControl(node,type)
-  for(const direction of ['inputs','outputs'] as const)if(JSON.stringify(node[direction].map(p=>[p.name,p.type]))!==JSON.stringify(expected[direction].map(p=>[p.name,p.type])))throw new Error('流程控制端口与声明类型不一致')
+export function validateControl(graph:WorkflowGraph,_complete=true):void {
+ for(const node of graph.nodes){
   if(node.kind==='loop'){
-   const max=Number(node.settings.maxIterations||16)
-   if(!Number.isSafeInteger(max)||max<1||max>10000)throw new Error('循环上限必须为 1–10000')
-   const body=bodies.get(node.id)!
-   for(const edge of complete?graph.links:[]){
-    if(edge.from===node.id&&['current','iteration'].includes(edge.output)&&!body.has(edge.to))throw new Error('循环中间值只能连接循环体')
-    if(affected.get(node.id)!.has(edge.from)&&!body.has(edge.to)&&edge.to!==node.id)throw new Error('循环体结果必须通过循环 result 输出')
-    if(edge.from===node.id&&edge.output==='result'&&body.has(edge.to))throw new Error('循环体不能依赖尚未完成的 result')
-   }
-   if(Object.hasOwn(node.settings,'port:next'))strictValue(type,JSON.parse(node.settings['port:next']))
+   if(!node.body||node.inputs.length!==1||node.inputs[0].name!=='value'||node.inputs[0].type!=='ANY'||node.outputs.length!==1||node.outputs[0].name!=='value'||node.outputs[0].type!=='ANY')throw new Error('旧循环回边已不支持：请改用内部画布循环（value 输入输出及 repeat）')
+   const repeat=Number(node.settings.repeat??1);if(!Number.isSafeInteger(repeat)||repeat<1||repeat>10000)throw new Error('repeat 必须为 1–10000 的整数')
+   if(node.body.scope!=='loop')throw new Error('循环体必须是 loop 作用域')
+  }
+  if(node.kind==='condition'){
+   const expected=configureControl(node,controlType(node))
+   for(const direction of ['inputs','outputs'] as const)if(JSON.stringify(node[direction].map(p=>[p.name,p.type]))!==JSON.stringify(expected[direction].map(p=>[p.name,p.type])))throw new Error('条件端口与声明类型不一致')
+  }
+  if(node.kind==='sequence'){
+   const expected=configureSequence(node,node.inputs.length)
+   for(const direction of ['inputs','outputs'] as const)if(JSON.stringify(node[direction].map(p=>[p.name,p.type]))!==JSON.stringify(expected[direction].map(p=>[p.name,p.type])))throw new Error('顺序执行输入输出必须按分支一一对应')
   }
  }
- const entries=[...bodies]
- for(let a=0;a<entries.length;a++)for(let b=a+1;b<entries.length;b++){
-  const [aid,as]=entries[a],[bid,bs]=entries[b]
-  const intersection=[...affected.get(aid)!].some(id=>affected.get(bid)!.has(id))
-  if(intersection&&!as.has(bid)&&!bs.has(aid))throw new Error('不支持交叉循环边界')
- }
+ if(graph.scope==='loop'){
+  for(const kind of ['break','continue'])if(graph.nodes.filter(n=>n.kind===kind).length!==1)throw new Error('循环体必须各有一个 break 和 continue 卡片')
+  if(graph.nodes.some(n=>n.kind==='return'))throw new Error('循环体不使用返回卡片')
+ }else if(graph.nodes.some(n=>n.kind==='break'||n.kind==='continue'))throw new Error('break/continue 只能出现在循环内部')
+ if(graph.scope==='method'&&graph.nodes.filter(n=>n.kind==='return').length!==1)throw new Error('方法体必须有且只有一个返回卡片')
+ if(graph.scope&&graph.nodes.some(n=>n.kind==='input'))throw new Error('内部作用域没有输入参数，使用变量池共享值')
+ for(const n of graph.nodes.filter(n=>n.kind==='break'||n.kind==='continue'))if(n.inputs.length!==1||n.inputs[0].name!=='condition'||n.inputs[0].type!=='BOOLEAN'||n.outputs.length)throw new Error('break/continue 仅有 Boolean condition 输入')
+ if(graph.scope==='method'){const n=graph.nodes.find(n=>n.kind==='return')!;if(n.outputs.length||n.inputs.some(p=>p.name!=='after'||p.type!=='ANY'))throw new Error('方法返回只表示完成，不接受返回值')}
  const visited=new Set<string>(),active=new Set<string>()
- const visit=(id:string)=>{
-  if(active.has(id))throw new Error('工作流存在循环：回边必须通过循环卡片')
-  if(visited.has(id))return
-  active.add(id)
-  for(const edge of graph.links.filter(e=>e.to===id)){
-   const target=graph.nodes.find(n=>n.id===id)
-   if(target?.kind==='loop'&&['next','continue'].includes(edge.input))continue
-   visit(edge.from)
-  }
-  active.delete(id);visited.add(id)
- }
+ const visit=(id:string)=>{if(active.has(id))throw new Error('工作流必须无环；循环请使用内部画布，不支持回边');if(visited.has(id))return;active.add(id);for(const edge of graph.links.filter(e=>e.to===id))visit(edge.from);active.delete(id);visited.add(id)}
  graph.nodes.forEach(n=>visit(n.id))
 }

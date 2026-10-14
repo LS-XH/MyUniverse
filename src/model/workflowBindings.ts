@@ -5,7 +5,8 @@ import {variablePort} from './workflowValues'
 /** Pair by operation semantics, not merely by coincidentally equal types. */
 export function pairedOutput(node:WorkflowNode,input:WorkflowPort):string|undefined {
  const replacement=node.kind==='valueMethod'&&!((['Tools','Agents'].includes(node.settings.variableType)&&node.settings.member==='get')||(node.settings.variableType==='Image'&&['fromUrl','fromSD'].includes(node.settings.member)))
- const primary=node.kind==='variable'?'value':replacement?'self':undefined
+ if(node.kind==='sequence')return node.outputs.find(p=>p.name===input.name&&p.type===input.type)?.name
+ const primary=['variable','loop','method'].includes(node.kind)?'value':replacement?'self':undefined
  if(input.name!==primary)return
  return node.outputs.find(p=>p.name==='value'&&p.type===input.type)?.name
 }

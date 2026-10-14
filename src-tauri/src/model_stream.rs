@@ -66,7 +66,22 @@ mod tests {
  #[test]
  fn native_sse_passes_post_auth_and_bytes(){
   let listener=TcpListener::bind("127.0.0.1:0").unwrap();let url=format!("http://{}",listener.local_addr().unwrap());
-  let server=thread::spawn(move||{let(mut socket,_)=listener.accept().unwrap();let mut buffer=[0u8;8192];let count=socket.read(&mut buffer).unwrap();let request=String::from_utf8_lossy(&buffer[..count]);assert!(request.starts_with("POST"));assert!(request.to_lowercase().contains("authorization: bearer dummy"));let body="data: {\"choices\":[]}\n\ndata: [DONE]\n\n";write!(socket,"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();});
+  let server=thread::spawn(move||{
+   let(mut socket,_)=listener.accept().unwrap();socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+   // Drain the complete POST before closing: unread request bytes can reset the
+   // socket on Windows and truncate an otherwise valid response nondeterministically.
+   let mut bytes=Vec::new();let mut buffer=[0u8;8192];
+   loop {
+    let count=socket.read(&mut buffer).unwrap();assert!(count>0,"request ended before its body");bytes.extend_from_slice(&buffer[..count]);
+    if let Some(end)=bytes.windows(4).position(|part|part==b"\r\n\r\n"){
+     let headers=String::from_utf8_lossy(&bytes[..end]);
+     let length=headers.lines().find_map(|line|{let(key,value)=line.split_once(':')?;if key.eq_ignore_ascii_case("content-length"){value.trim().parse::<usize>().ok()}else{None}}).unwrap();
+     if bytes.len()>=end+4+length {break;}
+    }
+   }
+   let request=String::from_utf8_lossy(&bytes);assert!(request.starts_with("POST"));assert!(request.to_lowercase().contains("authorization: bearer dummy"));assert!(request.contains("\"stream\":true"));
+   let body="data: {\"choices\":[]}\n\ndata: [DONE]\n\n";write!(socket,"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();
+  });
   let collected=std::sync::Arc::new(Mutex::new(Vec::<u8>::new()));let copy=collected.clone();
   let channel=Channel::new(move|body|{if let tauri::ipc::InvokeResponseBody::Json(text)=body{let value:Value=serde_json::from_str(&text).unwrap();if value["kind"]=="chunk"{copy.lock().unwrap().extend(value["data"].as_array().unwrap().iter().map(|n|n.as_u64().unwrap() as u8));}}Ok(())});
   tauri::async_runtime::block_on(pump(url,"dummy".into(),serde_json::json!({"stream":true}),5,&channel)).unwrap();server.join().unwrap();assert!(String::from_utf8(collected.lock().unwrap().clone()).unwrap().contains("[DONE]"));

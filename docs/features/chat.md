@@ -10,7 +10,7 @@
 
 聊天过程按时间记录，携带 runId、sequence、invocationId/parentInvocationId、节点与轮次。实时文字追加，最终答复以 Agent 返回值为准；思考只取服务返回的 reasoning_content/reasoning。协议仍保留原始文字，不从 Markdown 渲染或折叠内容重建上下文。事件保存节点标题及可读循环作用域，内部 ID 用于关联调用。取消/失败保留已显示内容，重启将未完成运行标为中断，不自动重放。Markdown、过程嵌套和折叠由 [聊天 UI](../ui/chat.md#消息过程与提议) 维护。
 
-界面过程块与完整 ContextMessage[] 模型协议独立持久化，不从展示文字重建 ToolUse。更新固定发起世界/会话，50ms 批量合并高频事件到内存；明确保存才持久化。修改建议即时出现，图继续执行；差异卡片由用户随后采纳/拒绝，见 [官方 Tool](official-tools.md)。chat.files/skills 兼容保留，文件/Skill 自动注入仍未实现。
+界面过程块与完整 ContextMessage[] 模型协议独立持久化，不从展示文字重建 ToolUse。更新固定发起世界/会话，50ms 批量合并高频事件到内存；通过 JSON 自动存档持久化。修改建议即时出现，图继续执行；差异卡片由用户随后采纳/拒绝，见 [官方 Tool](official-tools.md)。chat.files/skills 兼容保留，文件/Skill 自动注入仍未实现。
 
 ## HTTP、SSE 与传输边界
 
@@ -30,4 +30,4 @@
 
 ## 提议采纳与持久化
 
-工具提出建议时只发事件，pending 不代表世界已修改；用户采纳/拒绝/回退由 instanceProposals 处理，先更新内存。建议状态与会话内容同样需明确保存。批量原子采纳和冲突规则见 [官方 Tool](official-tools.md#修改建议与用户采纳)。
+工具提出建议时只发事件，pending 不代表世界已修改；用户采纳/拒绝/回退由 instanceProposals 处理，先更新内存。建议状态与会话内容自动存档到 JSON。批量原子采纳和冲突规则见 [官方 Tool](official-tools.md#修改建议与用户采纳)。

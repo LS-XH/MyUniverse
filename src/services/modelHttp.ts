@@ -1,8 +1,13 @@
+import {logOperation} from './runtimeLog'
 import { Channel, invoke, isTauri } from '@tauri-apps/api/core'
 import {SSEDecoder} from './sse'
 
 export interface HttpRequest {url:string;method?:'GET'|'POST';apiKey?:string;body?:unknown;timeoutSeconds?:number;signal?:AbortSignal}
-export async function modelStream({url,apiKey='',body,timeoutSeconds=120,signal}:HttpRequest,onData:(data:string)=>void|Promise<void>):Promise<void> {
+const requestLabel=(url:string)=>{try{const parsed=new URL(url);return parsed.origin+parsed.pathname}catch{return '无效接口地址'}}
+export function modelStream(request:HttpRequest,onData:(data:string)=>void|Promise<void>):Promise<void>{return logOperation('网络 / SSE',requestLabel(request.url),()=>executeModelStream(request,onData))}
+export function modelRequest<T=any>(request:HttpRequest):Promise<T>{return logOperation('网络 / HTTP',`${request.method||'GET'} ${requestLabel(request.url)}`,()=>executeModelRequest<T>(request))}
+export function modelImage(url:string,apiKey='',signal?:AbortSignal):Promise<string>{return logOperation('网络 / 图片',requestLabel(url),()=>executeModelImage(url,apiKey,signal))}
+async function executeModelStream({url,apiKey='',body,timeoutSeconds=120,signal}:HttpRequest,onData:(data:string)=>void|Promise<void>):Promise<void> {
  const parsed=new URL(url)
  if(!['http:','https:'].includes(parsed.protocol)||parsed.username||parsed.password)throw new Error('接口需要 http(s) URL，不允许在 URL 中包含密钥')
  if(signal?.aborted)throw new DOMException('已取消','AbortError')
@@ -30,7 +35,7 @@ export async function modelStream({url,apiKey='',body,timeoutSeconds=120,signal}
  }
  for(const data of decoder.finish())await onData(data)
 }
-export async function modelRequest<T=any>({url,method='GET',apiKey='',body,timeoutSeconds=60,signal}:HttpRequest):Promise<T> {
+async function executeModelRequest<T=any>({url,method='GET',apiKey='',body,timeoutSeconds=60,signal}:HttpRequest):Promise<T> {
   const parsed=new URL(url)
   if(!['http:','https:'].includes(parsed.protocol)||parsed.username||parsed.password)throw new Error('接口需要 http(s) URL，不允许在 URL 中包含密钥')
   if(signal?.aborted)throw new DOMException('已取消','AbortError')
@@ -60,7 +65,7 @@ export function apiEndpoint(base:string,path:string):string {
   url.hash='';url.search=''
   return url.toString()
 }
-export async function modelImage(url:string,apiKey='',signal?:AbortSignal):Promise<string> {
+async function executeModelImage(url:string,apiKey='',signal?:AbortSignal):Promise<string> {
   if(isTauri()){
     const result=await invoke<{status:number;text:string}>('model_http',{url,method:'GET',apiKey,body:null,timeoutSeconds:30,asImage:true})
     if(signal?.aborted)throw new DOMException('已取消','AbortError')

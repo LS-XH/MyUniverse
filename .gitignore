@@ -12,3 +12,5 @@ my-universe.exe - 快捷方式.lnk
 .cache/
 /target-next/release
 *.lnk
+/docs/changelog
+/scripts

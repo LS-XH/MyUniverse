@@ -4,8 +4,8 @@ import useGraphEditing from './useGraphEditing'
 type Point={x:number;y:number}
 export interface NodeDragBoundary {move:(event:PointerEvent)=>boolean;end:(event:PointerEvent)=>void;cancel:()=>void}
 
-export default function useCanvasEditing<G extends EditGraph>(value:G,onChange:(g:G)=>void,kind:string,canvas:React.RefObject<HTMLDivElement|null>,pan:Point,scale:number,setPan:(p:Point)=>void,toggleLibrary:()=>void,connect:(edge:ReturnType<typeof directedConnection>)=>void,onError:(error:string)=>void,readOnly=false,boundary?:React.RefObject<NodeDragBoundary|null>,onDragPreview?:(graph:G|null)=>void){
- const edit=useGraphEditing(value,onChange,kind),[from,setFrom]=useState<ConnectionEnd|null>(null),[cursor,setCursor]=useState<Point|null>(null),[box,setBox]=useState<{a:Point;b:Point}|null>(null)
+export default function useCanvasEditing<G extends EditGraph>(value:G,onChange:(g:G)=>void,kind:string,canvas:React.RefObject<HTMLDivElement|null>,pan:Point,scale:number,setPan:(p:Point)=>void,toggleLibrary:()=>void,connect:(edge:ReturnType<typeof directedConnection>)=>void,onError:(error:string)=>void,readOnly=false,boundary?:React.RefObject<NodeDragBoundary|null>,onDragPreview?:(graph:G|null)=>void,history?:{undo:()=>void;redo:()=>void;canUndo:boolean;canRedo:boolean}){
+ const localEdit=useGraphEditing(value,onChange,kind),edit={...localEdit,...history},[from,setFrom]=useState<ConnectionEnd|null>(null),[cursor,setCursor]=useState<Point|null>(null),[box,setBox]=useState<{a:Point;b:Point}|null>(null)
  const live=useRef({value,edit,pan,scale,from,connect,toggleLibrary,readOnly});live.current={value,edit,pan,scale,from,connect,toggleLibrary,readOnly}
  const pendingDrag=useRef<G|null>(null)
  const gesture=useRef<any>(null),portDrag=useRef<{start:Point;moved:boolean;end:ConnectionEnd}|null>(null),skipClick=useRef(false)

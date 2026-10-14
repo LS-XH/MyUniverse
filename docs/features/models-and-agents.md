@@ -18,7 +18,7 @@ URL/密钥变化后约 800ms 防抖获取目录，取消旧请求防止覆盖；
 
 ## Agent 的执行模型
 
-Agent 使用 Graph：数据线同时表达执行依赖，在同一画布展示循环体与回边，不增加独立执行线。返回依赖驱动执行，支持惰性条件与后判断循环，合法边界和缓存规则见 [工作流类型](workflow-execution.md#流程控制与作用域)。世界、Function、SD、Tool、变量及旧兼容节点保持稳定身份与既有职责。
+Agent 使用 Graph：数据线同时表达执行依赖，不增加独立执行线；全叶子反向深度优先、返回最后。顺序执行按端口序依次等待，惰性条件只读取选中分支，循环和 Method 方法变量持有可进入的内部无环图、共享工作变量池，合法边界和缓存规则见 [工作流类型](workflow-execution.md#流程控制与内部图)。世界、Function、SD、Tool、变量及旧兼容节点保持稳定身份与既有职责。
 
 当前通用 Function 节点仍调用旧独立返回接口，没有提供具体成员 bindingPath。新 void/add Function 必须有绑定上下文，尚不能直接用于这些节点的世界写入；不能把旧返回节点与绑定成员扩展混为同一契约。详见 [Function 的执行边界](functions.md#执行环境flow-和编辑)。
 
@@ -58,7 +58,7 @@ kind=toolCalls，输入 messages:MESSAGES 与 tools:TOOLS、可选 agents:AGENTS
 
 “新建工具调用模板”创建独立可编辑的“LLM + ToolCalls · 查询世界类名”，选择首个可用模型，缺少模型时手选。首次安装仍由 toolUseTemplateInstalled 防止重复，用户图和已安装旧模板不覆盖；删除后不自动重建。
 
-新模板以 toolUseHistory 的系统词与用户输入启动 Messages 循环：current → 基础 LLM → 合并响应 → 存在待执行调用。真分支执行 ToolCalls 并合并结果，假分支直接选择合并的响应；选择值反馈 next，存在待执行调用反馈 continue。结束后保存完整上下文并返回最后文本。一个基础 LLM 同时支持连续多轮工具交流，默认 16 轮，模板不隐式裁剪历史，可自行接入 Messages.trim。
+新模板先把 toolUseHistory 的系统词与用户输入保存到 Messages 变量，再进入内部循环（repeat=16 硬上限）。内部每轮读取历史 → 基础 LLM → 合并响应 → 存在待执行调用。IF 真分支执行 ToolCalls 并合并结果，假分支只选择合并响应；普通叶子将选择值显式写回历史。break 读取“存在待执行调用”的取反，没有调用时直接结束，不遍历 continue。循环后读取最新历史并返回最后文本。一个基础 LLM 支持连续多轮交流，不再使用 next/current 回边；模板不隐式裁剪历史，可自行接入 Messages.trim。
 
 Tools.get 接入 builtin:list_classes；仅查询世界。模型是否请求工具由服务决定，模拟验收不能替代真实供应商验证。失败不提交记忆。
 

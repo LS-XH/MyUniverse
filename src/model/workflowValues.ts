@@ -1,5 +1,6 @@
-import {WorkflowNode,uid} from './types'
-export const variableTypes=['String','Number','Boolean','Messages','Image','Tools','Agents'] as const
+import {WorkflowGraph,WorkflowNode,uid} from './types'
+import {newScopeGraph} from './workflowScopes'
+export const variableTypes=['String','Number','Boolean','Messages','Image','Tools','Agents','Method'] as const
 export type VariableType=typeof variableTypes[number]
 export interface ToolCall {id:string;type:'function';function:{name:string;arguments:string};mcp?:{server:string;tool:string}}
 export interface ContextMessage {role:'system'|'user'|'assistant'|'tool';content:string|null;tool_calls?:ToolCall[];tool_call_id?:string;name?:string}
@@ -7,11 +8,12 @@ export interface MessageValue {type:'Messages';version:1;items:ContextMessage[];
 export interface ImageValue {type:'Image';version:1;url:string;filename?:string;width?:number;height?:number;mimeType?:string}
 export interface AgentsValue {type:'Agents';version:1;agentIds:string[]}
 export interface ToolsValue {type:'Tools';version:1;toolIds:string[]}
+export interface MethodValue {type:'Method';version:1;graph:WorkflowGraph}
 /** Compatibility for older internal imports; new values are always Tools. */
 export type ToolValue=ToolsValue
 export interface StoredVariable {id?:string;type:VariableType;value:unknown}
 export const variablePort=(type:VariableType)=>type==='String'?'STRING':type==='Image'?'IMAGE_OBJECT':type.toUpperCase()
-export const defaultVariable=(type:VariableType):unknown=>({String:'',Number:0,Boolean:false,Messages:{type:'Messages',version:1,items:[]},Image:{type:'Image',version:1,url:''},Tools:{type:'Tools',version:1,toolIds:[]},Agents:{type:'Agents',version:1,agentIds:[]}}[type])
+export const defaultVariable=(type:VariableType):unknown=>type==='Method'?{type:'Method',version:1,graph:newScopeGraph('method')}:{String:'',Number:0,Boolean:false,Messages:{type:'Messages',version:1,items:[]},Image:{type:'Image',version:1,url:''},Tools:{type:'Tools',version:1,toolIds:[]},Agents:{type:'Agents',version:1,agentIds:[]}}[type]
 export function validateMessages(value:unknown):MessageValue {
  const v=value as MessageValue;if(!v||v.type!=='Messages'||v.version!==1||!Array.isArray(v.items))throw new Error('需要 Messages 对象 {type, version:1, items}')
  const calls=new Map<string,boolean>()
@@ -21,6 +23,7 @@ export function validateMessages(value:unknown):MessageValue {
  for(const item of v.items){if(!item||!['system','user','assistant','tool'].includes(item.role)||(item.content!==null&&typeof item.content!=='string'))throw new Error('无效消息 role/content');if(item.tool_calls){if(item.role!=='assistant'||!Array.isArray(item.tool_calls))throw new Error('tool_calls 仅属于 assistant');for(const call of item.tool_calls){if(!call.id||calls.has(call.id)||call.type!=='function'||!call.function?.name||typeof call.function.arguments!=='string')throw new Error('工具调用需要唯一 id、名称与 JSON arguments 字符串');try{JSON.parse(call.function.arguments)}catch{throw new Error('工具 arguments 必须是 JSON 字符串')}calls.set(call.id,false)}}if(item.role==='tool'){if(!item.tool_call_id||!calls.has(item.tool_call_id)||calls.get(item.tool_call_id))throw new Error('工具返回必须匹配一个尚未返回的 tool_call_id');calls.set(item.tool_call_id,true)}}return structuredClone(v)
 }
 export function strictValue(type:VariableType,value:unknown):unknown {
+ if(type==='Method'){const v=value as MethodValue;if(v?.type==='Method'&&v.version===1&&v.graph?.version===1&&v.graph.scope==='method'&&Array.isArray(v.graph.nodes)&&Array.isArray(v.graph.links))return structuredClone(v)}
  if(type==='String'&&typeof value==='string'||type==='Number'&&typeof value==='number'&&Number.isFinite(value)||type==='Boolean'&&typeof value==='boolean')return value
  if(type==='Tools'){const v=value as ToolsValue;if(v?.type==='Tools'&&v.version===1&&Array.isArray(v.toolIds)&&v.toolIds.every(id=>typeof id==='string'&&!!id)&&new Set(v.toolIds).size===v.toolIds.length)return {type:'Tools',version:1,toolIds:[...v.toolIds]}}
  if(type==='Agents'){const v=value as AgentsValue;if(v?.type==='Agents'&&v.version===1&&Array.isArray(v.agentIds)&&v.agentIds.every(id=>typeof id==='string'&&!!id)&&new Set(v.agentIds).size===v.agentIds.length)return {type:'Agents',version:1,agentIds:[...v.agentIds]}}
@@ -30,6 +33,7 @@ export function strictValue(type:VariableType,value:unknown):unknown {
 }
 export interface MemberDefinition {key:string;name:string;input?:string;output:string;property?:boolean}
 export const variableMembers:Record<VariableType,MemberDefinition[]>={
+ Method:[],
  String:[{key:'length',name:'长度',output:'NUMBER',property:true},{key:'trim',name:'去除首尾空白',output:'STRING'},{key:'upper',name:'转为大写',output:'STRING'},{key:'lower',name:'转为小写',output:'STRING'},{key:'append',name:'追加文本',input:'STRING',output:'STRING'},{key:'contains',name:'包含文本',input:'STRING',output:'BOOLEAN'}],
  Number:[{key:'less',name:'小于',input:'NUMBER',output:'BOOLEAN'},{key:'equal',name:'相等',input:'NUMBER',output:'BOOLEAN'},{key:'abs',name:'绝对值',output:'NUMBER'},{key:'round',name:'四舍五入',output:'NUMBER'},{key:'floor',name:'向下取整',output:'NUMBER'},{key:'add',name:'增加',input:'NUMBER',output:'NUMBER'}],
  Boolean:[{key:'not',name:'取反',output:'BOOLEAN'},{key:'and',name:'逻辑与',input:'BOOLEAN',output:'BOOLEAN'},{key:'or',name:'逻辑或',input:'BOOLEAN',output:'BOOLEAN'}],
@@ -40,6 +44,7 @@ export const variableMembers:Record<VariableType,MemberDefinition[]>={
 }
 export function typedVariableNode(type:VariableType,member?:string,x=40,y=40):WorkflowNode {
  if(!variableTypes.includes(type))throw new Error('变量必须指定严格类型，禁止 ANY');
+ if(type==='Method'){if(member)throw new Error('方法没有参数或属性');const id=uid();return {id,kind:'method',title:'方法',x,y,settings:{variableType:type,name:`method_${id.slice(0,6)}`},inputs:[{name:'value',type:'ANY'}],outputs:[{name:'value',type:'ANY'}]}}
  const def=member?variableMembers[type].find(item=>item.key===member):undefined;if(member&&!def)throw new Error('未知类型成员')
  const id=uid();return{id,kind:def?(def.property?'valueProperty':'valueMethod'):'variable',title:def?`${type} · ${def.name}`:`${type} 变量`,x,y,settings:{variableType:type,...(def?{member:def.key}:{name:`${type.toLowerCase()}_${id.slice(0,6)}`})},inputs:def?[{name:'self',type:variablePort(type),default:defaultVariable(type)},...(def.input?[{name:'arg',type:def.input}]:[]),...(member==='toolResult'?[{name:'callId',type:'STRING',default:''},{name:'toolName',type:'STRING',default:''}]:[])]:[{name:'value',type:variablePort(type)},{name:'after',type:'ANY'}],outputs:[{name:'value',type:def?.output||variablePort(type)}]}
 }

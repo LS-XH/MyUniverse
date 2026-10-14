@@ -1,8 +1,10 @@
+import {graphLeaves,walkWorkflowNodes} from '../model/workflowScopes'
+import {MethodValue} from '../model/workflowValues'
 import {askChatQuestion} from './chatQuestions'
 import {agentCapabilities,resolveWorkflowAgents,workflowAgentValue} from './workflowAgents'
 import {agentParameters} from '../model/agents'
 import {AgentLimitError,isAgentLimit,agentDefinitionSignature,AgentInvocation,AgentMemoryChange,commitAgentMemory,emitAgentEvent,newAgentRuntime,spend} from './agentRuntime'
-import {loopBodies,controlType} from '../model/workflowControl'
+import {controlType} from '../model/workflowControl'
 import {workflowNodeTitle} from '../model/workflows'
 import {resolveWorkflowTools,workflowToolMember} from './workflowTools'
 import {registeredTools} from '../model/builtinTools'
@@ -24,7 +26,7 @@ import { callLLM, callLLMMessage, callLLMStream, callLLMWithTools, LLMMessage } 
 import { runFunctionValue } from './functions'
 
 export interface ImageResult {filename:string;subfolder:string;type:string;url:string}
-export interface WorkflowRun {value:unknown;variables:Record<string,unknown>;trace:{id:string;title:string;value:unknown;frame?:string;invocationId?:string}[];memoryChanges?:AgentMemoryChange[]}
+export interface WorkflowRun {value:unknown;variables:Record<string,unknown>;trace:{id:string;title:string;value:unknown;frame?:string;scopeLabel?:string;invocationId?:string}[];memoryChanges?:AgentMemoryChange[]}
 export interface WorkflowDependencies {runId?:string;invocation?:AgentInvocation;stream?:boolean;llmStream?:typeof callLLMStream;toolContext?:ToolCallContext;onEvent?:(event:WorkflowEvent)=>void|Promise<void>;llm?:typeof callLLM;llmMessage?:typeof callLLMMessage;imageAction?:typeof workflowImageAction;http?:typeof modelRequest;sd?:(workflow:SDWorkflow,input:string,workspace:Workspace,world?:World,signal?:AbortSignal)=>Promise<ImageResult[]>;function?:typeof runFunctionValue}
 export const workflowText=(value:unknown):string=>typeof value==='string'?value:value==null?'':JSON.stringify(value,null,2)
 function messages(value:unknown):LLMMessage[] {
@@ -34,14 +36,12 @@ function messages(value:unknown):LLMMessage[] {
   if(!Array.isArray(data)||data.some(item=>!item||!['user','assistant','system','tool'].includes(item.role)||(item.content!==null&&typeof item.content!=='string')))throw new Error('上下文应为 {role, content} 消息数组')
   return validateMessages({type:"Messages",version:1,items:data}).items
 }
-function evaluator(graph:WorkflowGraph,input:unknown,workspace:Workspace,world:World|undefined,variables:Record<string,unknown>,signal:AbortSignal|undefined,trace:WorkflowRun['trace'],deps:WorkflowDependencies,onProgress?:(message:string)=>void,scope?:{body:Set<string>;parent:{evaluate:(id:string)=>Promise<unknown>;output:(id:string,name:string)=>Promise<unknown>};loopValues:Map<string,Record<string,unknown>>;frame:string}) {
+function evaluator(graph:WorkflowGraph,input:unknown,workspace:Workspace,world:World|undefined,variables:Record<string,unknown>,signal:AbortSignal|undefined,trace:WorkflowRun['trace'],deps:WorkflowDependencies,onProgress?:(message:string)=>void,scope?:{frame:string;label:string;methods:string[]}) {
   const cache=new Map<string,Promise<unknown>>(),outputs=new Map<string,Record<string,unknown>>(),resolved=new Map<string,unknown>(),seenEdges=new Set<string>()
   const emit=(event:WorkflowEvent)=>{
     const node='id'in event&&['node','loop','branch'].includes(event.kind)?graph.nodes.find(n=>n.id===event.id):undefined
-    const scopeLabel=scope?.frame.split('/').filter(Boolean).map(part=>{const split=part.lastIndexOf(':');const loop=graph.nodes.find(n=>n.id===part.slice(0,split));return (loop?workflowNodeTitle(loop):'循环')+' · 第 '+part.slice(split+1)+' 轮'}).join(' / ')
-    return emitAgentEvent(deps.invocation,deps.onEvent,{...event,...(node?{title:workflowNodeTitle(node)}:{}),...(scopeLabel?{scopeLabel}:{})},scope?.frame)
+    return emitAgentEvent(deps.invocation,deps.onEvent,{...event,...(node?{title:workflowNodeTitle(node)}:{}),...(scope?{scopeLabel:scope.label}:{})},scope?.frame)
   }
-  const bodies=loopBodies(graph)
   const request=async(model:import('../model/types').ModelConnection,conversation:LLMMessage[],requestSignal?:AbortSignal,tools?:ToolDefinition[]):Promise<LLMMessage>=>{
     if(deps.invocation)spend(deps.invocation.runtime,'calls')
     const id:string=crypto.randomUUID();await emit({kind:'model',id,state:'running'})
@@ -68,47 +68,57 @@ function evaluator(graph:WorkflowGraph,input:unknown,workspace:Workspace,world:W
     const key=`${node.id}:${name}`;if(resolved.has(key))return resolved.get(key)
     const link=graph.links.find(link=>link.to===node.id&&link.input===name)
     let value:unknown
-    if(link){const loopValue=scope?.loopValues.get(link.from);value=loopValue&&Object.hasOwn(loopValue,link.output)?loopValue[link.output]:await output(link.from,link.output)
+    if(link){value=await output(link.from,link.output)
       if(!seenEdges.has(link.id)){seenEdges.add(link.id);await emit({kind:'edge',id:link.id,value,valueType:executionType(value)})}
       const type=node.inputs.find(p=>p.name===name)?.type;if(['TOOLS','AGENTS'].includes(type||'')||['variable','valueMethod','valueProperty'].includes(node.kind)&&['STRING','NUMBER','BOOLEAN','MESSAGES','IMAGE_OBJECT'].includes(type||''))value=strictValue(({STRING:'String',NUMBER:'Number',BOOLEAN:'Boolean',MESSAGES:'Messages',IMAGE_OBJECT:'Image',TOOLS:'Tools',AGENTS:'Agents'} as Record<string,VariableType>)[type!],value)
     }else if(node.bindings?.[`in:${name}`]){
       const binding=node.bindings[`in:${name}`],entry=poolEntries(variables).find(v=>v.id===binding.variableId)
       if(!entry?.type)throw new Error('绑定变量不存在：'+binding.name)
       const port=node.inputs.find(p=>p.name===name)
-      if(port?.type!==({String:'STRING',Number:'NUMBER',Boolean:'BOOLEAN',Messages:'MESSAGES',Image:'IMAGE_OBJECT',Tools:'TOOLS',Agents:'AGENTS'}[entry.type]))throw new Error('绑定变量类型不匹配')
+      if(port?.type!==({String:'STRING',Number:'NUMBER',Boolean:'BOOLEAN',Messages:'MESSAGES',Image:'IMAGE_OBJECT',Tools:'TOOLS',Agents:'AGENTS',Method:'METHOD'}[entry.type]))throw new Error('绑定变量类型不匹配')
       value=strictValue(entry.type,entry.value)
     }else{const stored=node.settings[`port:${name}`];value=stored!==undefined?JSON.parse(stored):node.inputs.find(port=>port.name===name)?.default}
     if(link&&node.bindings?.[`in:${name}`]){const binding=node.bindings[`in:${name}`],entry=poolEntries(variables).find(v=>v.id===binding.variableId);if(!entry?.type||variablePort(entry.type)!==node.inputs.find(p=>p.name===name)?.type)throw new Error('输入绑定类型不匹配');value=strictValue(entry.type,value);variables[entry.name]={id:entry.id,type:entry.type,value};await emit({kind:'variables',values:variables})}
     resolved.set(key,value);return value
   }
   const evaluate=(id:string):Promise<unknown>=>{
-    if(scope&&!scope.body.has(id))return scope.parent.evaluate(id)
     if(cache.has(id))return cache.get(id)!
     const node=graph.nodes.find(node=>node.id===id);if(!node)throw new Error('来源节点已不存在')
     const promise=(async()=>{
       check();if(deps.invocation)spend(deps.invocation.runtime,'nodes');await emit({kind:'node',id:node.id,state:'waiting'});
-      if(!['loop','condition'].includes(node.kind))for(const port of [...node.inputs].sort((a,b)=>Number(b.name==='after')-Number(a.name==='after')))await read(node,port.name)
+      if(!['loop','condition','sequence'].includes(node.kind))for(const port of [...node.inputs].sort((a,b)=>Number(b.name.startsWith('condition'))-Number(a.name.startsWith('condition'))||Number(b.name==='after')-Number(a.name==='after')))await read(node,port.name)
       check();await emit({kind:'node',id:node.id,state:'running'});check();onProgress?.(`执行：${workflowNodeTitle(node)}`)
       const setting=node.settings
       let value:unknown
       switch(node.kind){
         case 'loop':{
-          const type=controlType(node),max=Number(setting.maxIterations||16)
-          if(!graph.links.some(e=>e.to===node.id&&e.input==='next')&&!Object.hasOwn(setting,'port:next')&&!node.bindings?.['in:next'])throw new Error('循环 next 必须有来源')
-          let current=strictValue(type,await read(node,'initial'))
-          for(let iteration=1;iteration<=max;iteration++){
-            check();const loopValues=new Map(scope?.loopValues);loopValues.set(node.id,{current,iteration})
-            for(const output of ['current','iteration']){const binding=node.bindings?.['out:'+output];if(binding){const entry=poolEntries(variables).find(v=>v.id===binding.variableId);if(!entry?.type||variablePort(entry.type)!==node.outputs.find(p=>p.name===output)?.type)throw new Error('循环输出绑定类型不匹配');variables[entry.name]={id:entry.id,type:entry.type,value:strictValue(entry.type,loopValues.get(node.id)![output])}}}
-            await emit({kind:'loop',id:node.id,iteration,state:'running'});await emit({kind:'variables',values:variables})
-            const engine=evaluator(graph,input,workspace,world,variables,signal,trace,deps,onProgress,{body:bodies.get(node.id)!,parent:{evaluate,output},loopValues,frame:(scope?.frame||'')+'/'+node.id+':'+iteration})
-            const next=strictValue(type,await engine.read(node,'next')),again=strictValue('Boolean',await engine.read(node,'continue'))
-            if(!again){value=next;outputs.set(node.id,{result:value});await emit({kind:'loop',id:node.id,iteration,state:'complete'});break}
-            if(iteration===max)throw new Error('循环达到最大轮次，仍要求继续')
-            current=next
+          value=await read(node,'value')
+          const repeat=Number(setting.repeat??1)
+          for(let iteration=1;iteration<=repeat;iteration++){
+            check();await emit({kind:'loop',id:node.id,iteration,state:'running'})
+            const frame=(scope?.frame||'')+'/'+node.id+':'+iteration,label=[scope?.label,`循环 · 第 ${iteration} 轮`].filter(Boolean).join(' / ')
+            const engine=evaluator(node.body!,input,workspace,world,variables,signal,trace,deps,onProgress,{frame,label,methods:scope?.methods||[]})
+            const result=await engine.finish()
+            await emit({kind:'loop',id:node.id,iteration,state:'complete'})
+            if(result.stop||!result.again)break
           }
           break
         }
-        case 'condition':{const selected=strictValue('Boolean',await read(node,'condition')) as boolean;await emit({kind:'branch',id:node.id,selected});value=strictValue(controlType(node),await read(node,selected?'trueValue':'falseValue'));break}
+        case 'sequence':{const values:Record<string,unknown>={};for(const port of node.inputs)values[port.name]=await read(node,port.name);outputs.set(node.id,values);break}
+        case 'break':case 'continue':value=strictValue('Boolean',await read(node,'condition'));break
+        case 'method':{
+          value=await read(node,'value')
+          const entry=poolEntries(variables).find(v=>setting.variableId?v.id===setting.variableId:v.name===setting.name)
+          if(!entry||entry.type!=='Method')throw new Error('方法变量不存在或类型已变化')
+          const definition=strictValue('Method',entry.value) as MethodValue
+          validateWorkflow(definition.graph)
+          const methods=[...(scope?.methods||[]),entry.id]
+          if(methods.length>(deps.invocation?.runtime.limits.depth||8))throw new AgentLimitError('方法调用深度超过上限')
+          const frame=(scope?.frame||'')+'/method:'+node.id+':'+methods.length,label=[scope?.label,`方法 · ${entry.name}`].filter(Boolean).join(' / ')
+          await evaluator(definition.graph,input,workspace,world,variables,signal,trace,deps,onProgress,{frame,label,methods}).finish()
+          break
+        }
+        case 'condition':{const selected=strictValue('Boolean',await read(node,'condition')) as boolean;await emit({kind:'branch',id:node.id,selected});const chosen=await read(node,selected?'trueValue':'falseValue');value=controlType(node)==='ANY'?chosen:strictValue(controlType(node) as VariableType,chosen);break}
         case 'agent':{const supplied=await read(node,'agents'),agents=supplied===undefined?workspace.agents?.filter(a=>a.id===setting.agentId)||[]:resolveWorkflowAgents(supplied,workspace);if(agents.length!==1)throw new Error('调用 Agent 需要且只能接入一个 Agent');const result=await runAgent(agents[0],JSON.parse(strictValue('String',await read(node,'input')) as string),workspace,world,signal,onProgress,deps);value=workflowText(result.value);break}
 
         case 'llmBasic':{
@@ -134,7 +144,7 @@ function evaluator(graph:WorkflowGraph,input:unknown,workspace:Workspace,world:W
           value=validateMessages({type:'Messages',version:1,fragment:'toolResults',items:results});break
         }
         case 'input':{const parameters=typeof input==='object'&&input?input as Record<string,unknown>:{input};value=parameters[setting.parameter||'input'];const type=node.outputs[0]?.type;const map:Record<string,VariableType>={STRING:'String',NUMBER:'Number',BOOLEAN:'Boolean',MESSAGES:'Messages',IMAGE_OBJECT:'Image',TOOLS:'Tools',AGENTS:'Agents'};if(map[type])value=strictValue(map[type],value);break}
-        case 'return':await read(node,'after');value=await read(node,'value');break
+        case 'return':await read(node,'after');value=graph.scope==='method'?undefined:await read(node,'value');break
         case 'constant':value=setting.valueType==='json'?JSON.parse(setting.value||'null'):setting.value||'';break
         case 'world':{
           if(!world||!node.object?.classId)throw new Error('请选择世界和类')
@@ -204,17 +214,26 @@ function evaluator(graph:WorkflowGraph,input:unknown,workspace:Workspace,world:W
       }
       check();for(const [key,binding] of Object.entries(node.bindings||{})){
         const output=key.startsWith('out:')?key.slice(4):binding.output;if(!output)continue
-        if(node.kind==='loop'&&['current','iteration'].includes(output))continue
         const entry=poolEntries(variables).find(v=>v.id===binding.variableId);if(!entry?.type)throw new Error('绑定变量不存在：'+binding.name)
-        const port=node.outputs.find(p=>p.name===output);if(port?.type!==({String:'STRING',Number:'NUMBER',Boolean:'BOOLEAN',Messages:'MESSAGES',Image:'IMAGE_OBJECT',Tools:'TOOLS',Agents:'AGENTS'}[entry.type]))throw new Error('输出绑定类型不匹配')
+        const port=node.outputs.find(p=>p.name===output);if(port?.type!==({String:'STRING',Number:'NUMBER',Boolean:'BOOLEAN',Messages:'MESSAGES',Image:'IMAGE_OBJECT',Tools:'TOOLS',Agents:'AGENTS',Method:'METHOD'}[entry.type]))throw new Error('输出绑定类型不匹配')
         const next=strictValue(entry.type,output==='value'?value:outputs.get(node.id)?.[output]);variables[entry.name]={id:entry.id,type:entry.type,value:next}
       }
-      if(['variable','setVariable'].includes(node.kind)||Object.keys(node.bindings||{}).length)await emit({kind:'variables',values:variables});trace.push({id:node.id,title:workflowNodeTitle(node),value,frame:scope?.frame,invocationId:deps.invocation?.id});await emit({kind:'node',id:node.id,state:'complete'});return value
+      if(['variable','setVariable'].includes(node.kind)||Object.keys(node.bindings||{}).length)await emit({kind:'variables',values:variables});trace.push({id:node.id,title:workflowNodeTitle(node),value,frame:scope?.frame,scopeLabel:scope?.label,invocationId:deps.invocation?.id});await emit({kind:'node',id:node.id,state:'complete'});return value
     })().catch(async error=>{await emit({kind:'node',id:node.id,state:signal?.aborted?'cancelled':'error',error:error instanceof Error?error.message:String(error)});throw new Error(`[${workflowNodeTitle(node)}] ${error instanceof Error?error.message:String(error)}`,{cause:error})})
     cache.set(id,promise);return promise
   }
-  const output=async(id:string,name:string):Promise<unknown>=>{if(scope&&!scope.body.has(id))return scope.parent.output(id,name);const value=await evaluate(id);if(name==='value')return value;const extra=outputs.get(id);if(!extra||!Object.hasOwn(extra,name))throw new Error('本地节点不支持此输出端口');return extra[name]}
-  return {evaluate,read,output}
+  const output=async(id:string,name:string):Promise<unknown>=>{const value=await evaluate(id);if(name==='value')return value;const extra=outputs.get(id);if(!extra||!Object.hasOwn(extra,name))throw new Error('本地节点不支持此输出端口');return extra[name]}
+  const finish=async():Promise<{value?:unknown;stop?:boolean;again?:boolean}>=>{
+    for(const leaf of graphLeaves(graph).filter(n=>!['return','break','continue'].includes(n.kind)))await evaluate(leaf.id)
+    if(graph.scope==='loop'){
+      const stop=await evaluate(graph.nodes.find(n=>n.kind==='break')!.id) as boolean
+      if(stop)return {stop:true}
+      return {stop:false,again:await evaluate(graph.nodes.find(n=>n.kind==='continue')!.id) as boolean}
+    }
+    const terminal=graph.nodes.find(n=>n.kind==='return')
+    return {value:terminal?await evaluate(terminal.id):undefined}
+  }
+  return {evaluate,read,output,finish}
 }
 export async function runAgent(agent:AgentDefinition,input:string|Record<string,unknown>,workspace:Workspace,world?:World,signal?:AbortSignal,onProgress?:(message:string)=>void,deps:WorkflowDependencies={}):Promise<WorkflowRun> {
   if(signal?.aborted)throw new DOMException('运行已取消','AbortError')
@@ -230,10 +249,12 @@ export async function runAgent(agent:AgentDefinition,input:string|Record<string,
   try{
     const original=agent;agent=migrateWorkflowTypes(agent);validateWorkflow(agent.graph)
     const returns=agent.graph.nodes.filter(node=>node.kind==='return');if(returns.length!==1)throw new Error('Agent 必须有且只有一个返回卡片')
-    const declarations=new Map<string,string>();for(const n of agent.graph.nodes.filter(node=>node.kind==='variable')){const previous=declarations.get(n.settings.name);if(previous&&previous!==n.settings.variableType)throw new Error('变量 '+n.settings.name+' 存在不同类型的声明');declarations.set(n.settings.name,n.settings.variableType)}
+    const declarations=new Map<string,string>();for(const n of [...walkWorkflowNodes(agent.graph),...poolEntries(agent.variables).filter(e=>e.type==='Method').flatMap(e=>walkWorkflowNodes((e.value as MethodValue).graph))].filter(node=>node.kind==='variable')){const previous=declarations.get(n.settings.name);if(previous&&previous!==n.settings.variableType)throw new Error('变量 '+n.settings.name+' 存在不同类型的声明');declarations.set(n.settings.name,n.settings.variableType)}
     const previous=runtime.staged.get(key),variables=structuredClone(ensureGraphVariables(agent.graph,{...agent.variables,...(previous?.variables||agent.memory?.[scope])})),trace:WorkflowRun['trace']=[]
+    for(const entry of poolEntries(agent.variables).filter(e=>e.type==='Method'))variables[entry.name]=structuredClone(agent.variables[entry.name])
+    for(const entry of poolEntries(variables).filter(e=>e.type==='Method'))validateWorkflow((strictValue('Method',entry.value) as MethodValue).graph)
     await emit({kind:'variables',values:variables})
-    const engine=evaluator(agent.graph,parameters,workspace,world,variables,signal,trace,{...deps,invocation},onProgress),value=await engine.evaluate(returns[0].id)
+    const engine=evaluator(agent.graph,parameters,workspace,world,variables,signal,trace,{...deps,invocation},onProgress),value=(await engine.finish()).value
     toolResultText(value)
     if(signal?.aborted)throw new DOMException('运行已取消','AbortError')
     if(workspace.agents?.some(a=>a.id===original.id))runtime.staged.set(key,{agentId:agent.id,scope,base:previous?.base??structuredClone(original.memory?.[scope]),definition:previous?.definition||agentDefinitionSignature(original),variables:structuredClone(variables)})

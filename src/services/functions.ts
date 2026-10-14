@@ -1,3 +1,4 @@
+import {appLog,logOperation} from './runtimeLog'
 import { fieldPath, FunctionAppendScope } from '../model/functionAppend'
 import { beginScript, executeHostScript } from './scriptHost'
 import { invoke, isTauri } from '@tauri-apps/api/core'
@@ -8,11 +9,20 @@ import { sameData } from '../model/merge'
 import { Entity, FieldSchema, FieldValue, FunctionContext, FunctionResult, FunctionScript, TypedValue, Workspace, World } from '../model/types'
 import { createFunctionApi, functionContext, typedValueMarkdown, validateTypedValue } from '../model/functionValues'
 
+type FunctionExecutor=(fn:FunctionScript,input:string,world?:World,context?:FunctionContext,signal?:AbortSignal,job?:FunctionJob)=>Promise<{value:string;typedValue?:TypedValue}>
+let backgroundExecutor:FunctionExecutor|undefined
+export function bindFunctionExecutor(executor:FunctionExecutor){backgroundExecutor=executor;return()=>{if(backgroundExecutor===executor)backgroundExecutor=undefined}}
+
 export async function runFunction(fn:FunctionScript,input:string,world?:World,context?:FunctionContext):Promise<string> {
   return (await runFunctionValue(fn,input,world,context)).value
 }
-export async function runFunctionValue(fn:FunctionScript,input:string,world?:World,context?:FunctionContext,signal?:AbortSignal,job?:FunctionJob):Promise<{value:string;typedValue?:TypedValue}> {
+export function runFunctionValue(...args:Parameters<typeof executeFunctionValue>):ReturnType<typeof executeFunctionValue>{
+ if(args[0].language!=='py'&&backgroundExecutor)return executeFunctionValue(...args)
+ return logOperation('Function',args[0].name,()=>executeFunctionValue(...args))
+}
+async function executeFunctionValue(fn:FunctionScript,input:string,world?:World,context?:FunctionContext,signal?:AbortSignal,job?:FunctionJob):Promise<{value:string;typedValue?:TypedValue}> {
   if(signal?.aborted)throw new DOMException('已取消','AbortError')
+  if(fn.language!=='py'&&backgroundExecutor)return backgroundExecutor(fn,input,world,context,signal,job)
   const typed=fn.apiVersion===2,contract=fn.returnType||{type:'Text' as const}
   if(typed&&!context)throw new Error('请选择调用实例和绑定属性，提供 self / input 对象。')
   if(typed&&context)context={...context,input:validateTypedValue(context.input,undefined,world,'input')}
@@ -32,6 +42,7 @@ export async function runFunctionValue(fn:FunctionScript,input:string,world?:Wor
     const session=beginScript(world,fn.id,false,scope)
     try{
       const response=JSON.parse(await invoke<string>('run_function',{language:'py',code,input,world:worldCatalog(session.read(),fn.id),api:null,context:typed?context:null,runtimeApi:null,contract:voidMode?{type:'Void'}:typed?contract:null,bridge:true}))
+      if(typeof response.logs==='string'&&response.logs)appLog.info('Python Console',response.logs)
       if(signal?.aborted)throw new DOMException('已取消','AbortError')
       for(const mutation of response.mutations||[]){
         if(!Array.isArray(mutation.path)||!mutation.path.length||mutation.path.some((key:unknown)=>typeof key!=='string'))throw new Error('Python 对象操作路径无效')
@@ -66,10 +77,11 @@ export async function runFunctionValue(fn:FunctionScript,input:string,world?:Wor
   }catch(error){session.close();throw error}
 
 }
-export interface FunctionJob {worldId:string;docId:string;fieldId:string;schemaId:string;fn:FunctionScript;input:string;source:string;error?:string;context?:FunctionContext;contextKey?:string}
-export function functionJobs(workspace:Workspace,force=false):FunctionJob[] {
+export interface FunctionJob {worldId:string;docId:string;entityId?:string;fieldId:string;schemaId:string;fn:FunctionScript;input:string;source:string;error?:string;context?:FunctionContext;contextKey?:string}
+export function functionJobs(workspace:Workspace,force=false,scope?:{worldId:string;docId?:string;entityId?:string}):FunctionJob[] {
   const jobs:FunctionJob[]=[]
   for(const world of workspace.worlds){
+    if(scope&&world.id!==scope.worldId)continue
     // A scan is a fixed snapshot: share its world hash and dependency index,
     // without caching mutable worlds across scans or missing external edits.
     let revision:string|undefined
@@ -80,6 +92,7 @@ export function functionJobs(workspace:Workspace,force=false):FunctionJob[] {
     for(const d of world.documents)for(const e of d.entities)gather(e.fields)
     const cyclic=(id:string,path=new Set<string>()):boolean=>{if(path.has(id))return true;const next=new Set(path).add(id);return (dependencies.get(id)||[]).some(child=>cyclic(child,next))}
     for(const doc of world.documents){
+    if(scope?.docId&&doc.id!==scope.docId)continue
     const walk=(fields:FieldValue[],schemas:FieldSchema[],entity:Entity)=>fields.forEach(field=>{
       const schema=schemas.find(s=>s.id===field.schemaId);if(!schema||field.functionOrigin)return
       if(!schema.functionIds?.length){walk(field.children,schema.children||[],entity);return}
@@ -92,13 +105,28 @@ export function functionJobs(workspace:Workspace,force=false):FunctionJob[] {
         if(fn?.apiVersion===2&&!cycle){try{context=functionContext(world,doc,entity,field,schema)}catch(e){error=String(e)}}
         const contextKey=fn?.apiVersion===2?JSON.stringify(context||{self:entity.id,error}):undefined
         const priorSource=fn?.executionMode==='void'?prior?.source?.replace(/\nworld:[^\n]*$/,''):prior?.source
-        if(fn&&(force||!prior||prior.input!==input||priorSource!==source||prior.contextKey!==contextKey))jobs.push({worldId:world.id,docId:doc.id,fieldId:field.id,schemaId:schema.id,fn,input,source,context,contextKey,...(error?{error}:{})})
+        if(fn&&(force||!prior||prior.input!==input||priorSource!==source||prior.contextKey!==contextKey))jobs.push({worldId:world.id,docId:doc.id,entityId:entity.id,fieldId:field.id,schemaId:schema.id,fn,input,source,context,contextKey,...(error?{error}:{})})
       }
       walk(field.children,schema.children||[],entity)
-    });for(const entity of doc.entities)walk(entity.fields,doc.schema,entity)
+    });for(const entity of doc.entities)if(!scope?.entityId||entity.id===scope.entityId)walk(entity.fields,doc.schema,entity)
     }
   }
   return jobs
+}
+/** Refresh one scheduled binding without rescanning unrelated classes or instances. */
+export function resolveFunctionJob(workspace:Workspace,identity:FunctionJob):FunctionJob|undefined{
+ const world=workspace.worlds.find(w=>w.id===identity.worldId),doc=world?.documents.find(d=>d.id===identity.docId),fn=workspace.functions?.find(f=>f.id===identity.fn.id)
+ if(!world||!doc||!fn)return
+ const entity=doc.entities.find(e=>e.id===(identity.entityId||identity.context?.self.entityId))||doc.entities.find(e=>!!fieldPath(e.fields,identity.fieldId))
+ if(!entity)return
+ const find=(fields:FieldValue[],schemas:FieldSchema[]):{field:FieldValue;schema:FieldSchema}|undefined=>{
+  for(const field of fields){if(field.functionOrigin)continue;const schema=schemas.find(s=>s.id===field.schemaId);if(!schema)continue;if(field.id===identity.fieldId)return {field,schema};const nested=find(field.children,schema.children||[]);if(nested)return nested}
+ }
+ const found=find(entity.fields,doc.schema);if(!found||!found.schema.functionIds?.includes(fn.id))return
+ const {field,schema}=found,input=functionInput(field,schema,world)
+ let context:FunctionContext|undefined,error:string|undefined
+ if(fn.apiVersion===2)try{context=functionContext(world,doc,entity,field,schema)}catch(failure){error=String(failure)}
+ return {...identity,fn,input,source:functionRevision(fn,world),context,contextKey:fn.apiVersion===2?JSON.stringify(context||{self:entity.id,error}):undefined,error}
 }
 export function applyFunctionResult(workspace:Workspace,job:FunctionJob,result:FunctionResult):Workspace {
   const fn=workspace.functions?.find(fn=>fn.id===job.fn.id)
@@ -106,14 +134,16 @@ export function applyFunctionResult(workspace:Workspace,job:FunctionJob,result:F
   let changed=false
   const world=workspace.worlds.find(w=>w.id===job.worldId)
   if(functionRevision(fn,world)!==job.source)return workspace
-  const walk=(fields:FieldValue[],schemas:FieldSchema[]):FieldValue[]=>fields.map(field=>{
+  const walk=(fields:FieldValue[],schemas:FieldSchema[]):FieldValue[]=>{
+   const next=fields.map(field=>{
     const schema=schemas.find(s=>s.id===field.schemaId);if(!schema)return field
     let next=field
     if(field.id===job.fieldId&&schema.functionIds?.includes(fn.id)&&(job.error?field.value:functionInput(field,schema,world))===job.input&&!sameData(field.functionRuns?.find(r=>r.functionId===fn.id),{functionId:result.functionId,name:result.name,input:result.input,source:job.source,contextKey:job.contextKey,...(result.error?{error:result.error}:{})})){changed=true;next={...field,functionRuns:[...(field.functionRuns||[]).filter(r=>r.functionId!==fn.id),{functionId:result.functionId,name:result.name,input:result.input,source:job.source,contextKey:job.contextKey,...(result.error?{error:result.error}:{})}]}}
     if(next!==field)delete next.functionResults
     const children=walk(next.children,schema.children||[])
     return children.some((c,i)=>c!==next.children[i])?{...next,children}:next
-  })
-  const worlds=workspace.worlds.map(w=>w.id!==job.worldId?w:{...w,documents:w.documents.map(d=>d.id!==job.docId?d:{...d,entities:d.entities.map(e=>({...e,fields:walk(e.fields,d.schema)}))})})
+   });return next.every((f,i)=>f===fields[i])?fields:next
+  }
+  const worlds=workspace.worlds.map(w=>w.id!==job.worldId?w:{...w,documents:w.documents.map(d=>d.id!==job.docId?d:{...d,entities:d.entities.map(e=>{const fields=walk(e.fields,d.schema);return fields===e.fields?e:{...e,fields}})})})
   return changed?{...workspace,worlds}:workspace
 }

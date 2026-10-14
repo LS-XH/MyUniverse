@@ -271,3 +271,7 @@
   }
   
 }
+
+.workflow-scope-navigation {display:flex;align-items:center;gap:4px;max-width:38%;overflow-x:auto;min-width:0}
+.workflow-scope-navigation button {flex-shrink:0}
+

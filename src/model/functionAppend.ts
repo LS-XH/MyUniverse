@@ -52,3 +52,22 @@ export function reconcileFunctionBindings(workspace:Workspace):Workspace {
   const worlds=workspace.worlds.map(w=>{let changedWorld=false;const documents=w.documents.map(d=>{const next=reconcileFunctionDocument(d,live);if(next!==d)changedWorld=true;return next});if(!changedWorld)return w;changed=true;return {...w,documents}})
   return changed?{...workspace,worlds}:workspace
 }
+
+/** Interactive updates inspect changed instances; declaration changes still perform full validation. */
+export function reconcileChangedFunctionBindings(previous:Workspace,next:Workspace):Workspace{
+ if(previous.functions!==next.functions)return reconcileFunctionBindings(next)
+ const live=new Set((next.functions||[]).map(f=>f.id));let changed=false
+ const worlds=next.worlds.map(world=>{
+  const before=previous.worlds.find(w=>w.id===world.id);if(world===before)return world
+  const oldDocs=new Map(before?.documents.map(d=>[d.id,d]));let worldChanged=false
+  const documents=world.documents.map(doc=>{
+   const old=oldDocs.get(doc.id);if(doc===old)return doc
+   if(!old||old.schema!==doc.schema){const clean=reconcileFunctionDocument(doc,live);worldChanged ||= clean!==doc;return clean}
+   const oldEntities=new Map(old.entities.map(e=>[e.id,e]));let docChanged=false
+   const entities=doc.entities.map(entity=>{if(entity===oldEntities.get(entity.id))return entity;const clean=reconcileFunctionDocument({...doc,entities:[entity]},live).entities[0];docChanged ||= clean!==entity;return clean})
+   if(!docChanged)return doc;worldChanged=true;return {...doc,entities}
+  })
+  if(!worldChanged)return world;changed=true;return {...world,documents}
+ })
+ return changed?{...next,worlds}:next
+}

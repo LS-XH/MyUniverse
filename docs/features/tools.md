@@ -2,7 +2,7 @@
 
 ## 职责分工
 
-世界对象、Markdown 转换与存储只维护一套。JS Function/Tool 在主程序执行，以稳定 ID 门面读取按需数据；不每次导出整世界 Markdown 到 Node/Worker 再实现一套读取器。
+世界对象、Markdown 转换与存储只维护一套。JS Function/Tool 在后台 Worker 执行，以稳定 ID 门面读取按需数据；不每次导出整世界 Markdown 到 Node/Worker 再实现一套读取器。
 
 | 功能 | Function | Tool |
 | --- | --- | --- |
@@ -23,15 +23,15 @@ Function 与 JS Tool 共用稳定 ID 门面，接口和示例统一维护于 [AP
 
 ScriptHost 从当前主程序获取世界 base，维护不可变 draft 和 open 状态。脚本门面读写该会话草稿；执行完成且添加结构或 Tool 返回通过各自契约校验后，与运行期间最新 UI 世界三方合并，同一内容冲突拒绝提交。异常、取消、Schema/类型/JSON 错误丢弃草稿。
 
-Function 内部执行状态可与 add 新增字段原子提交，不将函数返回变成 Markdown 成员。主程序关闭隐式落盘，新增内容作为未保存草稿，用户明确保存时调用 saveWorkspace 串行写入当前快照，不读取或合并旧 Markdown。`await app.storage.save()` 只记录保存请求；当前 AppRoot 绑定 autoSave:false，成功提交后也不会隐式写盘。
+Function 内部执行状态可与 add 新增字段原子提交，不将函数返回变成 Markdown 成员。主程序关闭隐式落盘，新增内容作为未保存草稿，主程序自动调用 checkpointWorkspace 保存完整 JSON；用户明确保存时 saveWorkspace 导出文件，不读取或合并旧 Markdown。`await app.storage.save()` 只记录保存请求；当前 AppRoot 绑定 autoSave:false，成功提交不隐式导出 Markdown，对象仍由主程序自动 JSON 存档。
 
 内存已提交但磁盘失败时保留本地修改，报告统一同步错误；不声称落盘成功，不回滚其他用户编辑。Tool 提交是一次调用事务，不能等同于整次 Agent 成功才提交的局部记忆。
 
 ## 环境、缓存与取消
 
-JS/Flow 共用有限编译缓存，运行于主程序 WebView/浏览器，不需桌面 Node，不提供 CommonJS require。它们不是权限沙箱；用户代码自行访问全局对象/fetch 等造成的效果不在草稿回滚范围内。
+JS/Flow 与用户 JS Tool 共用后台 Worker 中的有限编译缓存，不需桌面 Node，不提供 CommonJS require。它们不是权限沙箱；用户代码自行访问全局对象/fetch 等造成的效果不在草稿回滚范围内。
 
-共用执行器限制脚本源码 1 MB、异步等待 5 秒。停止等待后会话接口失效；主线程同步死循环不能靠计时器中断。取消与超时不能承诺撤销远端请求。
+共用执行器限制脚本源码 1 MB、异步等待 5 秒。停止等待后会话接口失效；同步死循环可由主线程终止对应 Worker（单任务最多 10 秒）。取消与超时不能承诺撤销远端请求。
 
 Python 保留桌面 Python 3 子进程与硬超时，接收只读数据快照，输出 set_value/set_markdown/delete/add 日志（旧追加别名兼容），由主程序门面重放、验证和提交。它不重新实现 Markdown 或磁盘保存；本轮结构读取仍是快照，完整写后结构需下一轮读取。
 

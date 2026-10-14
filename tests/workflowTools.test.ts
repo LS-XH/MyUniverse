@@ -1,3 +1,4 @@
+import {walkWorkflowNodes} from '../src/model/workflowScopes'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {strictValue,typedVariableNode,ToolsValue,invokeValueMember} from '../src/model/workflowValues'
@@ -41,8 +42,8 @@ test('response fragments and constructors never pair or overwrite their input bi
 })
 test('node names are fixed by type even for previously customized example titles',()=>{
  const example=createToolUseExample()
- const variables=example.graph.nodes.filter(n=>n.kind==='variable')
- assert.deepEqual(variables.map(n=>n.title),['Messages 变量','Messages 变量','Tools 变量'])
+ const variables=walkWorkflowNodes(example.graph).filter(n=>n.kind==='variable')
+ assert.equal(variables.filter(n=>n.title==='Messages 变量').length,5);assert.equal(variables.filter(n=>n.title==='Tools 变量').length,1)
  variables[0].title='读取历史'
  assert.equal(workflowNodeTitle(variables[0]),'Messages 变量')
  const llm=workflowNode('llm');llm.title='自定义名称';assert.equal(workflowNodeTitle(llm),'LLM 模型（自动 ToolCalls）')
@@ -50,9 +51,9 @@ test('node names are fixed by type even for previously customized example titles
 })
 test('built-in Agent example completes ToolUse and preserves paired messages across runs',async()=>{
  const world=createWorld('示例世界'),example=createToolUseExample('m'),before=JSON.stringify(example)
- assert.equal(example.graph.nodes.filter(n=>n.kind==='llmBasic').length,1)
- assert.equal(example.graph.nodes.filter(n=>n.kind==='toolCalls').length,1)
- assert.equal(example.graph.nodes.some(n=>n.kind==='llm'),false)
+ assert.equal(walkWorkflowNodes(example.graph).filter(n=>n.kind==='llmBasic').length,1)
+ assert.equal(walkWorkflowNodes(example.graph).filter(n=>n.kind==='toolCalls').length,1)
+ assert.equal(walkWorkflowNodes(example.graph).some(n=>n.kind==='llm'),false)
  let round=0
  const first=await runAgent(example,toolUseExampleInput,ws,world,undefined,undefined,{llmMessage:async(_model,messages,_signal,tools)=>{
   if(round++===0){assert.deepEqual(tools?.map(t=>t.id),['builtin:list_classes']);assert.equal(messages.at(-1)?.content,toolUseExampleInput);return {role:'assistant',content:null,tool_calls:[{id:'example-call',type:'function',function:{name:'universe_list_classes',arguments:'{}'}}]}}

@@ -186,7 +186,7 @@ Markdown 正文继承聊天字体与主题，标题、列表、引用、链接�
 | schema-grip | ui-drag-handle--schema |
 | variable-drag-handle | ui-drag-handle--variable |
 
-field-card 的 ui-card--tilt 标记为兼容旧映射保留；文件操作与属性配置中的实际反馈已取消 perspective 和 rotateX/rotateY，仅使用二维 scale(1.008)、原阴影和主题高亮。
+field-card 的 ui-card--tilt 标记为兼容旧映射保留；文件操作与属性配置中的实际反馈已取消 perspective 和 rotateX/rotateY，二维缩放由 prepareCardMotion 按布局尺寸计算固定 4px 增量，配合阴影和主题高亮。高度超过 1,200px 或包含 `.is-long-content` 文本框时不缩放；FieldCard 同时跳过这类区域的悬停动画，避免为巨型正文创建/重绘变换表面。长文本编辑框规则见 [页面](pages.md)。
 
 ## 验收入口
 

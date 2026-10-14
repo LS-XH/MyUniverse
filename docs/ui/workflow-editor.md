@@ -20,7 +20,7 @@ Agent/SD 的配置、运行与节点库在同一右侧区域互斥显示，从 f
 
 标题旁提供展开/收起全部目录，递归作用于类型、基础变量、方法、属性及 ComfyUI 分类；单目录仍可独立展开。Agent/SD 搜索固定在标题下、不在树滚动区，与下方留间距。Function Flow 复用目录控制和无线条样式，当前没有同样的搜索输入。
 
-Agent 增加“流程控制”目录（循环、条件）和“Agent”调用目录；变量类型包含独立 Agents。循环/条件在卡片内选择 T，循环还可修改最大轮次。输入节点可选择 Schema 字段，Agent 配置编辑启用、调用说明、JSON Schema 和预算。
+Agent 的“流程控制”目录包含循环、条件、顺序执行，“Agent”调用目录独立；变量类型包含 Agents 与 Method（显示“方法”）。条件默认 ANY，可选择严格值类型；循环外部只显示 repeat；顺序执行配置 1–64 个分支，按编号成对展示 ANY 输入输出。输入节点可选择 Schema 字段，Agent 配置编辑启用、调用说明、JSON Schema 和预算。
 
 目录按功能和变量类型分组，类型目录包含基础变量、方法、属性；没有成员的子目录仍保留组织规则。移除全部层级线，保留缩进和箭头。变量类型文件夹使用该类型图标，而非统一 Folder。
 
@@ -32,7 +32,8 @@ Agent 增加“流程控制”目录（循环、条件）和“Agent”调用目
 | --- | --- |
 | String / Number / Boolean | Letters / Hash / Binary |
 | Messages / Image / Tools / Agents | messages-circle 双圆消息 / Image / Wrench / Network |
-| 循环 / 条件 | Repeat / GitBranch |
+| 循环 / 条件 / 顺序执行 | Repeat / GitBranch / ListOrdered |
+| 方法 / break / continue | FileCodeCorner / Octagon / SkipForward |
 | 类型方法 / 属性 | FileCodeCorner / FileBox |
 | LLM / SD / ToolCalls、调用 Tool | Bot / SquareSparkles / Wrench |
 | 输入、返回 / 世界、Function / 运算、常量 | ArrowDownUp / Database / Sigma |
@@ -117,7 +118,7 @@ Agent 增加“流程控制”目录（循环、条件）和“Agent”调用目
 
 原生下拉菜单展开时保留菜单操作；提交选项后结束菜单编辑，把焦点交还画布，使删除、复制、粘贴与撤销继续作用于工作流。点击空白画布或拖动节点标题同样交还焦点；点击输入框、多行文本和可编辑内容保留文本焦点。此规则由 Agent/SD 和 Function Flow 共用的画布手势实现，不能依靠点击工具栏恢复快捷键。
 
-一次完整拖动只记一个撤销步骤。删除节点同时删除关联线；撤销只恢复编辑定义，不能撤回网络、图片或已提交 Agent 记忆。图执行须满足入口/返回和合法循环边界，禁止未经循环卡片管理的环。
+一次完整拖动只记一个撤销步骤。删除节点同时删除关联线；撤销只恢复编辑定义，不能撤回网络、图片或已提交 Agent 记忆。图执行须满足作用域终止节点规则，所有作用域均禁止回边；循环只在内部独立图重复求值。
 
 卡片与空白支持同一右键菜单，复用顶部复制、粘贴、剪切、撤销、重做、删除、适配、节点库、配置、运行动作。空白时复制/剪切/删除灰色禁用，运行中编辑动作禁用。
 
@@ -137,4 +138,12 @@ ComfyUI 原生 Tensor 值未公开时显示“服务端数据 · 类型”，不
 
 WorkflowEditor/FlowEditor：主结构与正式节点渲染；WorkflowPorts：行配对与引用；VariablePool：池控件；useCanvasEditing/useGraphEditing：手势与历史；useVariableDrag：边界；DragCardPreview/useDragCardSize：同一外壳及测量；libraryDrop：暴露画布校验；WorkflowIcon：图标。
 
-Function Flow 使用独立 void/add 契约；结束节点仅驱动依赖求值，不把最终计算值写入世界，详见 [Function](../features/functions.md)。它有自己的输入与代码块端口，复用选择、右键、库拖出动画、端口悬停及图标，不承诺 Agent 的七型变量池和世界记忆。真实缩放、连线跟随和落点验收见 [开发与验证](../development.md)。
+Function Flow 使用独立 void/add 契约；结束节点仅驱动依赖求值，不把最终计算值写入世界，详见 [Function](../features/functions.md)。它有自己的输入与代码块端口，复用选择、右键、库拖出动画、端口悬停及图标，不承诺 Agent 的八型变量池和世界记忆。真实缩放、连线跟随和落点验收见 [开发与验证](../development.md)。
+
+## 循环与方法的内部画布
+
+双击循环或方法卡片标题进入内部，卡片也提供“进入内部画布”按钮，变量池的方法项提供“编辑方法体”。工具栏显示路径、返回上层和主画布，导航本身不改定义。循环内部自带 break/continue，方法自带完成返回；保护节点可移动、配置与连线，删除、剪切及粘贴不破坏其唯一性。内部库不提供 input/return 添加入口，break/continue 不作为可任意添加的库项。
+
+循环体可继续嵌套循环和方法；作用域之间不连线，变量池仍属于同一 Agent。每层独立保存平移与缩放。内部编辑写回所属循环 body 或方法变量 graph，在根图和变量池的一次事务中记录；撤销/重做跨内部视角仍还原完整定义，导航路径失效时返回有效祖先。删除或重命名共享变量递归同步内部引用。复制循环重建内部身份，复制方法调用保留变量身份。
+
+ANY 控制桥及顺序执行的对应输入输出按同主体透传合并成行，不因此允许把 Method 图定义作为任意 inline 值；方法定义由变量池和内部画布编辑，不提供图 JSON 文本编辑框。运行期间禁止编辑，仍可进入作用域观察最近执行状态。旧回边循环没有内部入口，保留原定义并在运行时提示重新建立内部循环，不自动清空旧图。

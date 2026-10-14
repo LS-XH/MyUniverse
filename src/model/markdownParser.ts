@@ -2,56 +2,11 @@ import { ClassDocument, Entity, FieldSchema, FieldValue, World, uid } from './ty
 import { functionInput, parseFunctionLink } from './functions'
 import { typedValueMarkdown, validateTypedValue } from './functionValues'
 
-// Escape property-like headings inside text. Fenced code remains verbatim.
-export function escapeTextHeadings(text: string, escape: boolean): string {
-  let fence: { char: string; size: number } | null = null
-  return text.split('\n').map(line => {
-    const marker = line.match(/^ {0,3}(`{3,}|~{3,})/)
-    if (marker) {
-      if (!fence) fence = { char: marker[1][0], size: marker[1].length }
-      else if (marker[1][0] === fence.char && marker[1].length >= fence.size && /^ {0,3}(`+|~+)\s*$/.test(line)) fence = null
-      return line
-    }
-    if (fence) return line
-    if (escape && /^(\\*)#+(?:\s|$)/.test(line)) return `\\${line}`
-    if (!escape && /^\\(\\*)#+(?:\s|$)/.test(line)) return line.slice(1)
-    return line
-  }).join('\n')
-}
+import {escapeTextHeadings,headingTree,trimBlankLines,type Heading} from './markdownSyntax'
+import {fillDocumentMarkdown} from './markdownImport'
+import {referenceText} from './referenceText'
+export {escapeTextHeadings} from './markdownSyntax'
 
-interface Heading { level: number; key: string; start: number; end: number; children: Heading[];originName?:string }
-function headingTree(markdown: string): { root: Heading; lines: string[] } {
-  const lines = markdown.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n')
-  const roots: Heading[] = [], stack: Heading[] = []
-  let fence: { char: string; size: number } | null = null
-  lines.forEach((line, index) => {
-    const marker = line.match(/^ {0,3}(`{3,}|~{3,})/)
-    if (marker) {
-      if (!fence) fence = { char: marker[1][0], size: marker[1].length }
-      else if (marker[1][0] === fence.char && marker[1].length >= fence.size && /^ {0,3}(`+|~+)\s*$/.test(line)) fence = null
-      return
-    }
-    if (fence) return
-    const match = line.match(/^(#+)(?:[ \t]+(.*)|\s*)$/)
-    if (!match) return
-    const originName=(match[2]||'').match(/[ \t]+<!--\s*(?:<!>\s*)?(.*?)\s*-->[ \t]*$/)?.[1]?.replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(Number(n)))
-    const node: Heading = { level: match[1].length, key: (match[2] || '').replace(/[ \t]+<!--\s*(?:<!>\s*)?.*?\s*-->[ \t]*$/,'').trim(), start: index, end: lines.length, children: [],...(originName?{originName}:{}) }
-    if (node.level <= 2 && !node.key) throw new Error(`第 ${index + 1} 行的类名或实例名称不能为空`)
-    while (stack.length && stack[stack.length - 1].level >= node.level) stack.pop()!.end = index
-    if (stack.length) stack[stack.length - 1].children.push(node)
-    else roots.push(node)
-    stack.push(node)
-  })
-  if (fence) throw new Error('Markdown 代码块尚未闭合，请补上对应的 ``` 或 ~~~')
-  if (roots.length !== 1 || roots[0].level !== 1) throw new Error('Markdown 必须包含一个一级标题作为类名，二级标题作为实例名称')
-  if (roots[0].children.some(node => node.level !== 2)) throw new Error('属性必须放在二级实例标题下面')
-  const names = roots[0].children.map(node => node.key)
-  const seenNames=new Set<string>(),duplicateNames=new Set<string>()
-  for(const name of names){if(seenNames.has(name))duplicateNames.add(name);seenNames.add(name)}
-  if (duplicateNames.size) throw new Error(`实例名称重复：${[...duplicateNames].map(name=>`“${name}”`).join('、')}，无法准确引用；请使用不同的二级标题`)
-  return { root: roots[0], lines }
-}
-const trimBlankLines = (text: string) => text.replace(/^(?:[ \t]*\n)+|(?:\n[ \t]*)+$/g, '')
 function emptyField(schema: FieldSchema, previous?: FieldValue): FieldValue {
   return { id: previous?.id || uid(), schemaId: schema.id, key: schema.keyType === 'Const' ? schema.key : '', value: '', children: (schema.children || []).filter(s => !s.repeatable).map(s => emptyField(s, previous?.children.find(field => field.schemaId === s.id))) }
 }
@@ -66,8 +21,16 @@ function canonicalReference(value: string): string {
 }
 
 /** Types come from the schema; Markdown supplies entity names and property values. */
-export function parseDocumentMarkdown(markdown: string, previous: ClassDocument, world?: World, options: {rejectUnknown?:boolean;enforceGeneratedReadOnly?:boolean;functionNames?:Record<string,string>} = {}): ClassDocument {
+export function parseDocumentMarkdown(markdown: string, previous: ClassDocument, world?: World, options: {mode?:'fill'|'replace';rejectUnknown?:boolean;enforceGeneratedReadOnly?:boolean;functionNames?:Record<string,string>} = {}): ClassDocument {
+  if(options.mode==='fill')return fillDocumentMarkdown(markdown,previous,world,options)
   const { root, lines } = headingTree(markdown)
+  const resolvePlain=(value:string,target:FieldSchema,prior?:FieldValue,part:'key'|'value'='value')=>{
+    if(!value||/^\[[^\]]*\]\(/.test(value))return canonicalReference(value)
+    if(prior&&referenceText(prior[part])===value)return prior[part]
+    const doc=world?.documents.find(d=>d.id===target.classId)
+    if(doc&&(doc.entities.some(e=>e.name===value)||doc.id===previous.id&&root.children.some(n=>n.key===value)))return `[${value}](${doc.fileName}#${encodeURIComponent(value)})`
+    throw new Error(`“${target.key}”需要配置类中的实例，未找到“${value}”`)
+  }
   const schema: FieldSchema[] = structuredClone(previous.schema)
   const functionNames={...options.functionNames}
   const indexNames=(fields:FieldValue[])=>fields.forEach(f=>{if(f.functionOrigin&&!functionNames[f.functionOrigin.functionId])functionNames[f.functionOrigin.functionId]=f.functionOrigin.name;indexNames(f.children)})
@@ -99,6 +62,7 @@ export function parseDocumentMarkdown(markdown: string, previous: ClassDocument,
       const origin=metadata(node)
       let target = origin?schemas.find(s=>s.id===origin.schemaId):schemas.find(s => s.keyType === 'Const' && s.key === node.key)
       if (!target&&!origin) target = schemas.find(s => s.keyType === 'Class' && /^\[.*\]\(.*#.*\)/.test(node.key) && (!s.classId || referenceClass(node.key, world) === s.classId))
+      if (!target&&!origin) target = schemas.find(s=>s.keyType==='Class'&&(old.some(f=>f.schemaId===s.id&&referenceText(f.key)===node.key)||world?.documents.find(d=>d.id===s.classId)?.entities.some(e=>e.name===node.key)||s.classId===previous.id&&root.children.some(n=>n.key===node.key)))
       // An unselected Class-key row is still an instance of its configured schema.
       // Editors and model-supplied Markdown may retain its empty/placeholder title.
       if (!target&&!origin) {
@@ -110,12 +74,13 @@ export function parseDocumentMarkdown(markdown: string, previous: ClassDocument,
       if (!target&&!origin) target = schemas.find(s => s.keyType === 'Text' && (s.repeatable || !counts.has(s.id)))
       if (!target || (!target.repeatable && counts.has(target.id))) {if(options.rejectUnknown)throw new Error('修改建议不能修改类结构，请保留已有属性结构');return []}
       counts.set(target.id, (counts.get(target.id) || 0) + 1)
-      const key = target.keyType === 'Class' ? canonicalReference(node.key) : node.key
+      const placeholder=!node.key||node.key==='新属性'||node.key===target.placeholder||node.key===target.key
+      const key = target.keyType === 'Class' && !placeholder ? resolvePlain(node.key,target,old.find(f=>!used.has(f.id)&&f.schemaId===target!.id&&referenceText(f.key)===node.key),'key') : node.key
       const prior = (origin?old.find(field=>!used.has(field.id)&&field.id===origin.id&&field.schemaId===target!.id):undefined) || old.find(field => !used.has(field.id) && field.schemaId === target.id && field.key === key && (!node.originName||field.functionOrigin?.name===node.originName))
         || old.find(field => !used.has(field.id) && field.schemaId === target.id && (!node.originName||field.functionOrigin?.name===node.originName))
       if (prior) used.add(prior.id)
       const fieldId=origin?.id||prior?.id||uid()
-      let resolvedOrigin=origin?{functionId:origin.functionId,name:origin.name,bindingFieldId:origin.bindingFieldId}:undefined
+      let resolvedOrigin=origin?{functionId:origin.functionId,name:origin.name,bindingFieldId:origin.bindingFieldId}:prior?.functionOrigin
       if(node.originName&&!resolvedOrigin){
         if(prior?.functionOrigin&&prior.functionOrigin.name===node.originName)resolvedOrigin={...prior.functionOrigin,name:node.originName}
         else{
@@ -135,7 +100,7 @@ export function parseDocumentMarkdown(markdown: string, previous: ClassDocument,
         addBody(rawValue(node), target.children || [], children)
       } else if (target.valueType !== 'Null') value = originalValue()
       else if (originalValue()) throw new Error(`“${node.key}”配置为 Null，不能包含内容；请先修改属性类型`)
-      if (target.valueType === 'Class') value = canonicalReference(value)
+      if (target.valueType === 'Class') value = resolvePlain(value,target,prior)
       if (value && target.valueType === 'Integer' && !/^-?\d+$/.test(value)) throw new Error(`“${node.key}”需要整数`)
       if (value && target.valueType === 'Decimal' && !/^-?\d+(\.\d+)?$/.test(value)) throw new Error(`“${node.key}”需要小数`)
       if (value && target.valueType === 'Data' && !/^\d{8}$/.test(value)) throw new Error(`“${node.key}”需要 YYYYMMDD 格式日期`)

@@ -46,7 +46,7 @@ Markdown 双栏是布局的一部分，按列分配空间；主顶栏固定按�
 
 字段和 Schema 共用 FieldCard 反馈；引用选择与只读派生结果复用成员控件。行小卡片复用 flow-palette-item；内嵌变量是其紧凑形态。画布变量默认复用普通节点移动，不另造一套坐标或连线更新机制。
 
-仅 String、Number、Boolean 工作流参数允许直接编辑。Messages、Image、Tools 显示带类型提示的投放槽，接受引用或连线；不提供任意 JSON 编辑框。
+Method 方法定义通过内部画布编辑，不提供原始图 JSON 输入。仅 String、Number、Boolean 工作流参数允许直接编辑。Messages、Image、Tools 显示带类型提示的投放槽，接受引用或连线；不提供任意 JSON 编辑框。
 
 ## 交互反馈与拖动不变性
 

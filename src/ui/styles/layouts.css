@@ -6,6 +6,8 @@
   overflow: hidden;
 }
 .rail {
+  position: relative;
+  z-index: 10001;
   width: 64px;
   border-right: 1px solid #202637;
   display: flex;
@@ -6423,14 +6425,7 @@
 .graph-config-page .graph-style-head:has(.relation-visibility) select {flex:1;width:0}
 
 .tree-main .tree-dirty-dot, .entity-header .entity-dirty-dot {flex:none;width:6px;height:6px;min-width:6px;border-radius:50%;background:var(--accent,#a78bfa);box-shadow:0 0 5px var(--accent,#a78bfa),0 0 10px var(--accent,#a78bfa);margin-left:6px;align-self:center}
-.global-save-all {position:absolute;right:12px;top:16px;z-index:8;width:32px;height:32px}
-.topbar:has(.global-save-all) .topbar-markdown-toggle {right:52px}
-.topbar:has(.global-save-all) .topbar-page-actions {right:104px}
-.topbar:has(.global-save-all):has(.markdown-top-header.is-open) .topbar-page-actions {right:calc(clamp(280px,34%,420px) + 12px)}
-.markdown-top-header:has(.markdown-top-title) {padding-right:52px}
-
-.topbar:has(.global-save-all) .markdown-top-header:not(.is-open) {width:104px}
-.topbar:has(.global-save-all) .markdown-top-title {right:104px}
+.global-save-all {flex:none}
 
 /* World projects are roots; creation and project icons share one inset. */
 .creation-sidebar .project-nav {padding:0 8px 5px;}
@@ -6498,3 +6493,35 @@
 .attribute-filter-footer button {display:flex;align-items:center;gap:4px;white-space:nowrap;}
 
 .text-reference-content > textarea.ui-field--auto-grow { max-height:none; overflow-y:hidden; resize:none; }
+
+.archive-status { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+
+.rail .runtime-log-toggle.is-open {background:var(--active);color:var(--accent)}
+.runtime-log-panel {position:fixed;left:64px;right:0;bottom:0;z-index:85;height:min(360px,45vh);display:flex;flex-direction:column;background:var(--panel);color:var(--text);border-top:1px solid var(--border);box-shadow:0 -8px 28px #0002;transform:translateY(100%);visibility:hidden;pointer-events:none;transition:transform var(--ui-duration-280) cubic-bezier(.22,.8,.25,1),visibility 0s var(--ui-duration-280);}
+.runtime-log-panel.is-open {transform:translateY(0);visibility:visible;pointer-events:auto;transition:transform var(--ui-duration-280) cubic-bezier(.22,.8,.25,1),visibility 0s;}
+.runtime-log-header {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 16px;flex:none;border-bottom:1px solid var(--border);min-height:48px;}
+.runtime-log-title,.runtime-log-tools {display:flex;align-items:center;gap:10px;min-width:0;}
+.runtime-log-title strong {font-size:13px;white-space:nowrap;}
+.runtime-log-title>span {font-size:11px;color:var(--muted);white-space:nowrap;}
+.runtime-log-tools input {width:180px;font-size:12px;}
+.runtime-log-tools select {width:100px;font-size:12px;}
+.runtime-log-output {flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:8px 16px 16px;}
+.runtime-log-row {display:grid;grid-template-columns:190px 40px 120px minmax(0,1fr);gap:10px;padding:5px 0;border-bottom:1px solid color-mix(in srgb,var(--border) 50%,transparent);font:12px/1.7 Consolas,'Cascadia Code',monospace;align-items:start;}
+.runtime-log-row time,.runtime-log-source {color:var(--muted);}
+.runtime-log-source {overflow-wrap:anywhere;}
+.runtime-log-row pre {font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;margin:0;min-width:0;}
+.runtime-log-level {color:var(--accent);}
+.log-error .runtime-log-level,.log-error pre {color:var(--danger);}
+.log-warn .runtime-log-level {color:var(--warning);}
+.log-debug .runtime-log-level,.runtime-log-repeat {color:var(--muted);}
+.runtime-log-empty {padding:20px;color:var(--muted);font-size:12px;}
+@media (max-width:1100px) {.runtime-log-tools input {width:120px}.runtime-log-title>span {display:none}.runtime-log-row {grid-template-columns:180px 36px 90px minmax(0,1fr);gap:8px}}
+@media (prefers-reduced-motion:reduce) {.runtime-log-panel {transition:none}}
+
+.graph-relation-filter {
+  height: 32px;
+  width: 140px;
+  min-width: 90px;
+  padding: 4px 8px;
+  border-radius: 6px;
+}

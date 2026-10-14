@@ -1,3 +1,4 @@
+import {logOperation} from './runtimeLog'
 import {canonicalTool} from '../model/builtinTools'
 import {runBuiltinTool} from './builtinTools'
 import {ToolCallContext} from './instanceProposals'
@@ -7,6 +8,9 @@ import { modelRequest } from './modelHttp'
 import { beginScript, executeHostScript } from './scriptHost'
 const ajv=new Ajv2020({allErrors:true,strict:false})
 const schemas=new Map<string,ReturnType<typeof ajv.compile>>()
+type ToolExecutor=(tool:ToolDefinition,parameters:unknown,world?:World,signal?:AbortSignal)=>Promise<unknown>
+let backgroundExecutor:ToolExecutor|undefined
+export function bindToolExecutor(executor:ToolExecutor){backgroundExecutor=executor;return()=>{if(backgroundExecutor===executor)backgroundExecutor=undefined}}
 export const toolName=(tool:ToolDefinition)=>tool.callName||`tool_${tool.id.replace(/[^a-zA-Z0-9_]/g,'_')}`
 export function toolSpec(tool:ToolDefinition){
   const name=toolName(tool);if(!/^[a-zA-Z0-9_-]{1,64}$/.test(name))throw new Error('Tool 调用名称需要 1–64 位字母、数字、下划线或短横线')
@@ -24,7 +28,11 @@ export function modelToolSpec(tool:ToolDefinition){
   const spec=toolSpec(tool)
   return {type:'function',function:{name:spec.name,description:spec.description+(spec.annotations?'\nMCP annotations: '+JSON.stringify(spec.annotations):''),parameters:spec.inputSchema}}
 }
-export async function runTool(tool:ToolDefinition,parameters:unknown,world?:World,signal?:AbortSignal,http:typeof modelRequest=modelRequest,context?:ToolCallContext):Promise<unknown>{
+export function runTool(...args:Parameters<typeof executeTool>):ReturnType<typeof executeTool>{
+ if(args[0].kind==='js'&&backgroundExecutor)return executeTool(...args)
+ return logOperation('Tool',args[0].name,()=>executeTool(...args))
+}
+async function executeTool(tool:ToolDefinition,parameters:unknown,world?:World,signal?:AbortSignal,http:typeof modelRequest=modelRequest,context?:ToolCallContext):Promise<unknown>{
   const canonical=canonicalTool(tool);if(!canonical)throw new Error('官方 Tool 不存在');tool=canonical
   if(!tool.enabled)throw new Error('Tool 已停用')
   if(signal?.aborted)throw new DOMException('已取消','AbortError')
@@ -34,6 +42,7 @@ export async function runTool(tool:ToolDefinition,parameters:unknown,world?:Worl
     if(!tool.url)throw new Error('Tool URL 为空')
     return http({url:tool.url,method:tool.method,apiKey:tool.apiKey,body:tool.method==='GET'?undefined:tool.bodyMode==='raw'?parameters:{input:parameters},signal})
   }
+  if(backgroundExecutor)return backgroundExecutor(tool,parameters,world,signal)
   const session=beginScript(world,undefined,tool.annotations?.readOnlyHint===true)
   try{const value=await executeHostScript(tool.code||'','execute',session,undefined,[parameters,session.app],signal)
     if(signal?.aborted)throw new DOMException('已取消','AbortError')

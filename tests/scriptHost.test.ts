@@ -123,10 +123,10 @@ test('bound Function appends at any depth, preserves existing values and provena
   const text=documentMarkdown(doc),parsed=parseDocumentMarkdown(text,doc,f.read().worlds[0])
   assert.deepEqual(parsed.entities[0].fields[0].children,fields)
   assert.doesNotMatch(text,/function-sources|function-origin/)
-  assert.match(text,/<!-- 扩展 -->/)
+  assert.doesNotMatch(text,/<!--/)
   assert.deepEqual(parseDocumentMarkdown(text.replace(/<!-- 扩展 -->/g,'<!-- <!> 扩展 -->'),doc,f.read().worlds[0]).entities[0].fields[0].children,fields)
   assert.throws(()=>parseDocumentMarkdown(text.replace("新增","被改写"),doc,f.read().worlds[0]),/只读/)
-  assert.throws(()=>parseDocumentMarkdown(text.replace("#### 注释 <!-- 扩展 -->","#### 注释"),doc,f.read().worlds[0]),/只读/)
+  assert.deepEqual(parseDocumentMarkdown(text,doc,f.read().worlds[0]).entities[0].fields[0].children,fields)
   const table:Record<string,unknown>={};let index=0
   const legacyFields=(items:typeof fields,depth:number):string=>items.map(field=>{
    const ref=`f${index++}`;if(field.functionOrigin)table[ref]=[field.id,field.schemaId,field.functionOrigin.functionId,field.functionOrigin.name,field.functionOrigin.bindingFieldId]
@@ -137,8 +137,8 @@ test('bound Function appends at any depth, preserves existing values and provena
   assert.deepEqual(parseDocumentMarkdown(legacy,doc,f.read().worlds[0]).entities[0].fields[0].children,fields)
   assert.throws(()=>parseDocumentMarkdown(legacy.replace(/function-origin:f[0-9a-z]+/,"function-origin:fzzzzz"),doc,f.read().worlds[0]),/来源元数据无效/)
   const restored=parseDocumentMarkdown(text,{...doc,entities:[]},f.read().worlds[0])
-  assert.equal(restored.entities[0].fields[0].children[3].functionOrigin?.functionId,'append')
-  assert.equal(restored.entities[0].fields[0].children[3].functionOrigin?.bindingFieldId,restored.entities[0].fields[0].id)
+  assert.equal(restored.entities[0].fields[0].children[3].functionOrigin,undefined)
+  assert.equal(restored.entities[0].fields[0].children[3].value,'新增')
   const html=renderToStaticMarkup(createElement(FieldEditor,{world:f.read().worlds[0],doc,field:fields[3],schema:doc.schema[0].children![0],onChange:()=>{},onDelete:()=>{}}))
   assert.match(html,/扩展 →/);assert.match(html,/readOnly=""/);assert.doesNotMatch(html,/删除属性/)
   const objectHtml=renderToStaticMarkup(createElement(FieldEditor,{world:f.read().worlds[0],doc,field:fields[4],schema:doc.schema[0].children![3],onChange:()=>{}}))

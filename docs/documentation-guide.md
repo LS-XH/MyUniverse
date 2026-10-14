@@ -17,7 +17,7 @@ UI 维护设计理念、主题样式复用、页面布局、控件与手势；�
 | 聊天消息、工具组和提议呈现 | ui/chat.md |
 | 世界类型、稳定身份、来源与默认模板 | data/world.md |
 | 文件布局、JSON 对象与加载角色 | data/json-storage.md |
-| 标题、引用、重复成员、来源注释、解析 | data/markdown.md |
+| 标题、纯文本引用、重复成员、JSON 填入、解析 | data/markdown.md |
 | 视图/聊天/工作流持久结构 | data/views.md、chat.md、workflow.md |
 | 草稿、保存刷新、提交隔离、基线 | features/persistence.md |
 | 添加契约、调度与所有权 | features/functions.md |
