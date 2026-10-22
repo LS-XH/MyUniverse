@@ -47,4 +47,6 @@ metadata.output-schema 是 JSON Schema 字符串，声明最终结构化输出�
 
 包在桌面 user/skills 独立保存，浏览器使用 myuniverse-skill-packages-v1；Workspace JSON 只保存 Agent 等对技能的稳定 ID 引用，不内联包正文。旧内联 Skill 迁出前保留 ID 和正文，补 frontmatter，名称冲突追加后缀；成功后剥离工作区内联内容。默认包的版本迁移见 [配置兼容](integrations.md#兼容与一次性标志)。
 
-未修改包不重复写，外部修订冲突拒绝覆盖；修改 name 并保存会重命名目录、保留稳定 ID。格式错误包保留原文、标记 diskError 并禁用，允许 UI 修复。删除包移入 skills/.trash；移除受管参考/脚本文件保留于包内 .history；assets 不由应用保存链覆盖。单文件原子替换不构成整包或跨包事务。操作顺序和失败反馈见 [Skill 功能](../features/skills.md#保存与外部修改)。
+未修改包不重复写，外部修订冲突拒绝覆盖；修改 name 并保存会重命名目录、保留稳定 ID。格式错误包保留原文、标记 diskError 并禁用，允许 UI 修复。删除用户自建包移入 skills/.trash；移除受管参考/脚本文件保留于包内 .history；assets 不由应用保存链覆盖。单文件原子替换不构成整包或跨包事务。操作顺序和失败反馈见 [Skill 功能](../features/skills.md#保存与外部修改)。
+
+系统技能身份 builtin-skill:* 同时标识删除保护；目录移动或重命名不解除保护。应用与桌面保存链路拒绝删除该包；普通技能仍按既有 trash/history 恢复方式删除。

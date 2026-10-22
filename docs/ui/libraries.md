@@ -20,11 +20,13 @@ Tool 配置承载调用名、说明、JSON Schema、annotations 及 JS/HTTP 参�
 
 可展开包节点提供管理页、SKILL.md、scripts、references、assets。管理页显示说明和启用状态；正文编辑保留草稿，点击保存校验 YAML/name 后更新对象，后续由统一保存队列落盘。修改 name 同时请求目录改名，ID 保持。参考文档可创建、保存和删除；scripts 使用 Tool 编辑器；assets 仅在桌面资源管理器维护。
 
-重新读取技能目录会先尝试保存当前编辑，再扫描独立包；冲突和格式错误就地显示。删除包提示移入 .trash，移除受管参考文件提示保留 .history。新建、迁移、冲突与恢复规则见 [Skill 格式](../data/skills.md)，运行时文件接口见 [Skill 功能](../features/skills.md)。
+重新读取技能目录会先尝试保存当前编辑，再扫描独立包；冲突和格式错误就地显示。删除用户自建包提示移入 .trash，移除受管参考文件提示保留 .history。新建、迁移、冲突与恢复规则见 [Skill 格式](../data/skills.md)，运行时文件接口见 [Skill 功能](../features/skills.md)。
 
 ## LLM 连接
 
 连接页编辑 URL、密钥、模型目录、请求参数及输入未命中/缓存命中/输出价格。目录获取可取消旧请求，失败时允许手填模型 ID；测试会发送真实 HTTP 请求并显示结果。连接不提供系统词、Tool 或子 Agent 许可，见 [模型](../features/models.md)。
+
+系统自带技能以 builtin-skill 稳定身份保护，不显示删除菜单/按钮；移动到其他目录后仍不可删除。正文和说明仍按原编辑规则维护。放进系统文件夹的用户自建技能仍可删除，不能仅按当前文件夹判定所有权。技能分类根项使用 Hammer，每个技能包使用 Sparkles。
 
 ## Agent 与 SD
 

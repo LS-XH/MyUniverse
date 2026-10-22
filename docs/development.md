@@ -93,3 +93,5 @@ release 的 user 位于 exe 同目录，debug 使用工作目录。更新不得�
 维护文档前核对源码及示例，将当前规则更新到所属对象章节；实际命令和结果写 [日志](changelog/README.md)，不要在专题末尾追加日期补丁。
 
 toolCategories 测试覆盖三种 Agent 的默认目录许可与隔离、用户取消选择保留、旧目录移除时内容提升、只读目录删除/移动保护、职能图标持久化、自建 write/ask 的执行前确认、文件提议恢复/冲突/无关变更保留、批量保存倒序回退。tests/tool-categories-ui.html 使用内存夹具检查目录图标、分组配置、文件保存/回退和提问回答，不读写用户实际文件或访问模型。
+
+技能所有权验收：toolCategories 检查分类 Hammer、包项 Sparkles、系统项隐藏删除与领域拒绝、自建项保留删除；skillPackages 检查保存预检禁止任何部分写入。Rust 检查受保护包删除拒绝但编辑/改目录仍有效。tests/skill-ownership-ui.html 提供系统/自建技能同目录的隔离 UI 夹具。

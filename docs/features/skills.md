@@ -18,6 +18,8 @@ Skill Manager 的三项调用契约见 [官方工具目录](official-tools.md#sk
 
 ## 自带技能与策略
 
+自带技能（含 skill-creator）不可删除，保护依据 builtin-skill 稳定身份而非当前文件夹；仍可编辑正文和许可。用户自建技能放入系统目录不会变为不可删除。界面删除入口、领域移除方法、保存删除预检与桌面 change_skill_package 删除分支共同执行该规则。保存时发现遗漏自带包会在任何写入前拒绝，不能先写其他包再报错。
+
 roleplay-manager 管理多角色策略，character-performance 约定角色表现，旁白技能整理已发生的公开内容；角色输出为语言、神态、语气、动作、感官的非空子集，Schema 来自 metadata.output-schema。输出校验与一次纠正见 [Agent 结构化输出](agents.md#工具参数式结构化输出)，角色呈现见 [聊天 UI](../ui/chat.md)。
 
 Runtime Skills 是虚拟分类，skill-creator 是普通标准包，提供创建和迭代指导；由获准 Runtime Tool 维护文件。它不是独立的 create_skill 原生接口。Agent 默认接入 Runtime Skills 目录中的有效技能，以 [Agent 类型](agents.md#三种类型与实例) 为准。

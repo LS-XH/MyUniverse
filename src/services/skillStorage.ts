@@ -1,3 +1,4 @@
+import {isBuiltinSkill} from '../model/skillOwnership'
 import {invoke,isTauri} from '@tauri-apps/api/core'
 import {SkillDefinition,Workspace} from '../model/types'
 import {SkillDisk,skillFromDisk,skillToFiles,normalizeLegacySkill,skillTemplate} from '../model/skillPackages'
@@ -41,6 +42,7 @@ export async function loadSkillPackages(legacy:SkillDefinition[]=[]):Promise<Ski
 export async function persistSkillPackages(skills:SkillDefinition[]=[]){
  if(!initialized){const current=await readDisks();decode(current);initialized=true}
  const ids=new Set<string>(),names=new Set<string>();for(const s of skills){if(ids.has(s.id)||names.has(s.name))throw new Error('技能名称或身份重复');ids.add(s.id);names.add(s.name);if(!s.diskError)skillToFiles(s)}
+ for(const id of baseline.keys())if(!ids.has(id)&&isBuiltinSkill({id}))throw new Error('系统自带技能不可删除')
  for(const skill of skills){const previous=baseline.get(skill.id);if(skill.diskError)continue
   let unchanged=false;if(previous){try{unchanged=fingerprint(skillFromDisk(previous))===fingerprint(skill)}catch{/* A repaired package must replace the invalid file. */}}
   if(unchanged)continue

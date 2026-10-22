@@ -342,6 +342,7 @@
 
 | 文件 | 职责 | 规范 |
 | --- | --- | --- |
+| [skillOwnership.ts](../src/model/skillOwnership.ts) | 系统技能身份及删除规则 | [Skill](features/skills.md) |
 | [toolRoles.ts](../src/model/toolRoles.ts) | 工具职能、已移除身份、系统目录判定 | [Tool](features/tools.md) |
 | [agentCapabilityDefaults.ts](../src/model/agentCapabilityDefaults.ts) | 首次默认目录许可和调用级展开 | [Agent](features/agents.md) |
 | [ToolIcon.tsx](../src/ui/ToolIcon.tsx) | 树、集合和聊天共用职能图标 | [样式](ui/styles.md) |

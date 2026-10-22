@@ -106,11 +106,11 @@ ReferencePicker 与聊天输入模块共同使用 ui-reference-trigger 基础样
 
 ## 插件与模型的三级图标
 
-LibraryIcon 只表示系统分类根项：函数/工具/SD/Agent 保留原图标，LLM 为 BrainCircuit，Skill 为 Sparkles。普通虚拟文件夹及其子文件夹、集合页文件夹卡片使用 Folder，不继承文件类型图标。
+LibraryIcon 只表示系统分类根项：函数/工具/SD/Agent 保留原图标，LLM 为 BrainCircuit，Skill 为 Hammer。普通虚拟文件夹及其子文件夹、集合页文件夹卡片使用 Folder，不继承文件类型图标。
 
 LibraryFileIcon 统一树文件与集合卡片：JS 为 fluent:document-javascript-16-regular，Python 为 fluent:document-py-16-regular，Function Flow 为 Lucide Workflow，SD 工作流为 thesvg:comfyui，普通 Agent 工作流为 simple-icons:langgraph，LLM 连接为 Bot。系统 ReAct/高级/多角色 Agent 保留专有图标。AgentIcon 的普通 Agent 分支复用同一 LangGraph 图标，聊天等身份呈现保持一致。
 
-SkillTree 的包项为 FolderPen，SKILL.md/参考 Markdown 文件为 FileText；scripts 为 Wrench、assets 为 Image，references 入口为 Files，scripts 中的 Tool 仍为 Wrench。SkillsPage 对应管理卡片使用同一映射。
+SkillTree 的每个技能包项为 Sparkles，SKILL.md/参考 Markdown 文件为 FileText；scripts 为 Wrench、assets 为 Image，references 入口为 Files，scripts 中的 Tool 仍为 Wrench。SkillsPage 对应管理卡片使用同一映射。
 
 ToolIcon 按职能统一树项、集合卡片、编辑页与聊天过程：write 使用 FilePen，read 使用 FileSearchCorner，ask 使用 UserCheck，其他操作使用 Wrench；不根据显示名称猜测。WorkflowEvent 持久化 toolRole，旧事件通过内置调用名回查。系统文件夹使用 FolderCog，普通文件夹仍使用 Folder。当前 Lucide 依赖未含 FileSearchCorner，因此内联官方 SVG 路径（ISC 许可），不依赖运行时网络。
 
