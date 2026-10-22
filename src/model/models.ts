@@ -1,3 +1,4 @@
+export const SYSTEM_DEFAULT_MODEL='$chat-model'
 import { ModelConnection, Workspace, uid } from './types'
 
 export function createModel(models: ModelConnection[]): ModelConnection {

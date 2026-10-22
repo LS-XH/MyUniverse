@@ -1,0 +1,45 @@
+import {useLayoutEffect,useRef,useState} from 'react'
+import {createPortal} from 'react-dom'
+import {BookOpen,Box,Trash2} from 'lucide-react'
+import {AgentDefinition,SkillDefinition,World} from '../model/types'
+import {ChatDirective,activeDirectives,completionOptions,completionQuery} from '../model/chatDirectives'
+import {referenceIndex} from '../model/referenceIndex'
+import {toCssColor} from './ColorPicker'
+import {portalTheme} from './portalTheme'
+import PickerMenu from './PickerMenu'
+import {composerText,composerCaret,setComposerCaret} from './composerDom'
+
+export default function ChatComposerInput({value,onChange,refs,onRefs,world,skills,agent,onSend,placeholder}:{value:string;onChange:(text:string)=>void;refs:ChatDirective[];onRefs:(refs:ChatDirective[])=>void;world:World;skills:SkillDefinition[];agent?:AgentDefinition;onSend:()=>void;placeholder:string}){
+ const input=useRef<HTMLDivElement>(null),menu=useRef<HTMLDivElement>(null),[caret,setCaret]=useState(0),[selected,setSelected]=useState(0),[dismissed,setDismissed]=useState(''),[position,setPosition]=useState({left:0,top:0}),[context,setContext]=useState<{x:number;y:number;start:number;token:string}|null>(null)
+ const query=completionQuery(value,caret),key=query?`${query.start}:${query.kind}:${query.query}`:'',items=query?completionOptions(query.kind,query.query,world,skills,agent):[],open=!!query&&dismissed!==key
+ const publish=(text:string,at:number)=>{onChange(text);onRefs(activeDirectives(text,refs));setCaret(at);setDismissed('')}
+ useLayoutEffect(()=>{
+  const el=input.current;if(!el)return
+  const active=activeDirectives(value,refs).sort((a,b)=>b.token.length-a.token.length),chips=Array.from(el.querySelectorAll<HTMLElement>('[data-chat-token]')).map(n=>n.dataset.chatToken),expected:string[]=[]
+  let at=0;while(at<value.length){const ref=active.find(r=>value.startsWith(r.token,at));if(ref){expected.push(ref.token);at+=ref.token.length}else at++}
+  if(composerText(el)===value&&JSON.stringify(chips)===JSON.stringify(expected))return
+  const focused=el.contains(document.activeElement)||document.activeElement===el,saved=composerCaret(el),fragment=document.createDocumentFragment();at=0
+  while(at<value.length){const ref=active.find(r=>value.startsWith(r.token,at));if(!ref){const next=active.map(r=>value.indexOf(r.token,at)).filter(n=>n>=0),end=next.length?Math.min(...next):value.length;fragment.append(document.createTextNode(value.slice(at,end)));at=end;continue}
+   const choice=ref.kind==='instance'?referenceIndex(world).byId.get(ref.entityId):undefined,name=ref.kind==='skill'?skills.find(s=>s.id===ref.id)?.name:choice?.entity.name
+   const chip=document.createElement('span');chip.className='chat-composer-chip ui-reference-trigger ui-field--reference ui-surface ui-button ui-field--themed ui-field--text ui-field';chip.contentEditable='false';chip.tabIndex=0;chip.setAttribute('role','button');chip.dataset.chatToken=ref.token;chip.setAttribute('aria-label',`${name||ref.token}，右键删除`);chip.title='点击选择 · 右键删除';if(choice?.color){chip.style.setProperty('--reference-color',toCssColor(choice.color));chip.dataset.referenceColor=choice.color}
+   const badge=document.createElement('span');badge.className='reference-class ui-badge--reference ui-surface ui-badge ui-badge--themed ui-badge--text';badge.textContent=ref.kind==='skill'?'Skill':choice?.doc.name||'实例';chip.append(badge,document.createTextNode(name||ref.token.slice(2,-1)));const arrow=document.createElementNS('http://www.w3.org/2000/svg','svg');arrow.setAttribute('width','14');arrow.setAttribute('height','14');arrow.setAttribute('viewBox','0 0 24 24');arrow.setAttribute('fill','none');arrow.setAttribute('stroke','currentColor');arrow.setAttribute('stroke-width','2');arrow.setAttribute('aria-hidden','true');const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d','m6 9 6 6 6-6');arrow.append(path);chip.append(arrow);fragment.append(chip);at+=ref.token.length
+  }
+  el.replaceChildren(fragment);if(focused)setComposerCaret(el,Math.min(saved,value.length))
+ },[value,refs,world,skills])
+ useLayoutEffect(()=>{setSelected(0)},[key])
+ useLayoutEffect(()=>{
+  if(!open||!input.current)return
+  const update=()=>{const selection=window.getSelection(),range=selection?.rangeCount?selection.getRangeAt(0):undefined,rect=range?.getBoundingClientRect(),fallback=input.current!.getBoundingClientRect(),point=rect?.height?rect:fallback,height=menu.current?.offsetHeight||200,width=Math.min(340,window.innerWidth-16),top=point.top-height-6>=8?point.top-height-6:Math.min(point.bottom+6,window.innerHeight-height-8);setPosition({left:Math.max(8,Math.min(point.left,window.innerWidth-width-8)),top:Math.max(8,top)})}
+  update();window.addEventListener('resize',update);window.addEventListener('scroll',update,true);return()=>{window.removeEventListener('resize',update);window.removeEventListener('scroll',update,true)}
+ },[open,key,value])
+ useLayoutEffect(()=>{menu.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({block:'nearest'})},[selected])
+ const replace=(start:number,end:number,text:string,nextRefs=refs)=>{const next=value.slice(0,start)+text+value.slice(end),at=start+text.length;onChange(next);onRefs(activeDirectives(next,nextRefs));setCaret(at);setDismissed('');requestAnimationFrame(()=>{if(input.current){input.current.focus();setComposerCaret(input.current,at)}})}
+ const choose=(index:number)=>{const item=items[index];if(!query||!item||item.disabled)return;replace(query.start,query.end,item.directive.token+' ',[...refs,item.directive])}
+ const chipStart=(chip:HTMLElement)=>{const range=document.createRange();range.selectNodeContents(input.current!);range.setEndBefore(chip);return composerText(range.cloneContents()).length}
+ return <><div className="chat-composer-editor"><div ref={input} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="聊天输入" data-chat-composer data-placeholder={placeholder} aria-autocomplete="list" aria-controls={open?'chat-completions':undefined} aria-expanded={open} className="chat-composer-rich" onInput={e=>publish(composerText(e.currentTarget),composerCaret(e.currentTarget))} onKeyUp={()=>{if(input.current)setCaret(composerCaret(input.current))}} onMouseUp={()=>{if(input.current)setCaret(composerCaret(input.current))}} onBlur={()=>setDismissed(key)} onPaste={e=>{e.preventDefault();document.execCommand('insertText',false,e.clipboardData.getData('text/plain'))}} onClick={e=>{const chip=(e.target as HTMLElement).closest<HTMLElement>('[data-chat-token]');if(chip){chip.focus();if(!window.matchMedia('(prefers-reduced-motion:reduce)').matches)chip.animate([{transform:'translateY(0)'},{transform:'translateY(-2px)'},{transform:'translateY(0)'}],{duration:180})}}} onContextMenu={e=>{const chip=(e.target as HTMLElement).closest<HTMLElement>('[data-chat-token]');if(chip){e.preventDefault();setContext({x:e.clientX,y:e.clientY,start:chipStart(chip),token:chip.dataset.chatToken!})}}} onKeyDown={e=>{
+  if(e.nativeEvent.isComposing||e.keyCode===229)return
+  const chip=(e.target as HTMLElement).closest<HTMLElement>('[data-chat-token]');if(chip&&['Enter',' '].includes(e.key)){e.preventDefault();chip.focus();return}if(chip&&['Backspace','Delete'].includes(e.key)){e.preventDefault();const at=chipStart(chip);replace(at,at+chip.dataset.chatToken!.length,'');return}
+  if(open){if(e.key==='Escape'){e.preventDefault();setDismissed(key);return}if(['ArrowDown','ArrowUp'].includes(e.key)){e.preventDefault();setSelected(i=>(i+(e.key==='ArrowDown'?1:-1)+Math.max(items.length,1))%Math.max(items.length,1));return}if((e.key==='Enter'&&!e.shiftKey)||e.key==='Tab'){e.preventDefault();choose(selected);return}}
+  if(e.key==='Enter'){e.preventDefault();if(e.shiftKey){document.execCommand('insertText',false,'\n')}else onSend()}
+ }}/>{context&&<span style={{position:'fixed',left:context.x,top:context.y}}><PickerMenu onClose={()=>setContext(null)}><button type="button" className="ui-surface ui-button ui-menu-item danger" onClick={()=>{replace(context.start,context.start+context.token.length,'');setContext(null)}}><Trash2 size={14}/> 删除引用</button></PickerMenu></span>}</div>{open&&createPortal(<div ref={menu} style={{...(input.current?portalTheme(input.current):{}),...position}} className="chat-completion-menu ui-surface ui-menu ui-menu--themed ui-surface--bordered" role="listbox" id="chat-completions" aria-label={query?.kind==='skill'?'选择强制使用的 Skill':'选择技能或世界实例'} onMouseDown={e=>e.preventDefault()}><small>{query?.kind==='skill'?'强制使用 Skill':'强制技能 / 世界实例'}</small>{items.length?items.map((item,index)=><button type="button" key={JSON.stringify(item.directive)} id={`chat-completion-${index}`} role="option" aria-selected={selected===index} aria-disabled={!!item.disabled} className="ui-surface ui-button ui-menu-item" onClick={()=>choose(index)} onMouseEnter={()=>setSelected(index)}>{item.directive.kind==='skill'?<BookOpen size={15}/>:<Box size={15}/>}<span><strong>{item.label}</strong><small>{item.disabled||item.description}</small></span></button>):<p>没有匹配的项目</p>}</div>,document.body)}</>
+}

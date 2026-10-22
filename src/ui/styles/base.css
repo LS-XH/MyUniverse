@@ -69,3 +69,8 @@ p {
   }
   
 }
+
+/* App chrome is not a document selection surface; text controls retain native selection. */
+body {-webkit-user-select:none;user-select:none;}
+input,textarea,[contenteditable="true"],[contenteditable="plaintext-only"],[role="textbox"] {-webkit-user-select:text;user-select:text;}
+.chat-composer-chip {-webkit-user-select:none!important;user-select:none!important;}

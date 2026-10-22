@@ -1,3 +1,5 @@
+import {applyRuntimeFileWrite,skillVersion} from './runtimeSkills'
+import {skillToFiles} from '../model/skillPackages'
 import {entityMarkdown,markdownHeadingLevels,parseDocumentMarkdown} from '../model/markdown'
 import {ClassDocument,Entity,InstanceChangeProposal,ProposalAction,Workspace,World,uid} from '../model/types'
 import {mergeProposalEntity} from '../model/proposalMerge'
@@ -5,6 +7,12 @@ export interface ToolCallContext {conversationId?:string;onProposal?:(id:string)
 export interface ProposalEvent {proposal:InstanceChangeProposal;conversationId?:string}
 const listeners=new Set<(event:ProposalEvent)=>void>()
 export function onInstanceProposal(listener:(event:ProposalEvent)=>void){listeners.add(listener);return ()=>{listeners.delete(listener)}}
+export function publishProposal(proposal:InstanceChangeProposal,context:ToolCallContext={}){
+ if(!listeners.size)throw new Error('聊天修改建议处理器未就绪')
+ for(const listener of listeners)listener({proposal,conversationId:context.conversationId})
+ void context.onProposal?.(proposal.id)
+ return {proposalId:proposal.id,status:'pending',message:'已提交修改提议，等待用户保存或放弃；文件尚未写入。'}
+}
 export function proposalEntity(doc:ClassDocument,entity:Entity,markdown:string,world:World){
   if(!/^##\s/.test(markdown.trimStart())||markdownHeadingLevels(markdown).includes(1))throw new Error('修改建议需要以二级实例标题开始，不能包含类标题')
   const parsed=parseDocumentMarkdown(`# ${doc.name}\n\n${markdown}`,{...doc,entities:[entity]},world,{rejectUnknown:true})
@@ -41,6 +49,25 @@ export function decideInstanceProposal(workspace:Workspace,worldId:string,conver
   const world=workspace.worlds.find(w=>w.id===worldId),conversation=world?.chat.conversations.find(c=>c.id===conversationId),message=conversation?.messages.find(m=>m.proposal?.id===proposalId),proposal=message?.proposal
   if(!world||!proposal)throw new Error('修改建议已不存在')
   if(save==='revert'?proposal.status!=='saved':proposal.status!=='pending')throw new Error('此修改建议已处理')
+  if(proposal.fileChange){
+   const change=proposal.fileChange,current=workspace.skills?.find(s=>s.id===change.skillId),directory=change.path.split('/')[1],file=change.path.split('/').slice(2).join('/')
+   let skills=workspace.skills,saved=change.saved,savedBefore=change.savedBefore
+   if(save==='revert'){
+    if(!saved||!current||skillVersion(current)!==skillVersion(saved))throw new Error('文件保存后技能包已变化，无法安全回退')
+    if(change.baseline&&!savedBefore)throw new Error('缺少保存前文件快照，无法安全回退')
+    skills=savedBefore?skills?.map(s=>s.id===current.id?savedBefore!:s):skills?.filter(s=>s.id!==current.id)
+   }else if(save){
+    const sameName=workspace.skills?.find(s=>s.name===directory)
+    if(change.baseline?current?.id!==sameName?.id||!current:!!sameName)throw new Error('技能已被删除、替换或同名创建，请重新提出修改')
+    const now=current?skillToFiles(current)[file]:undefined,original=change.baseline?skillToFiles(change.baseline)[file]:undefined
+    if(now!==original)throw new Error('目标文件内容已变化，请重新读取并生成提议')
+    const next=applyRuntimeFileWrite(workspace,{path:change.path,content:proposal.after,...(now!==undefined?{expectedVersion:skillVersion(current!)}:{})})
+    // New-package proposals retain their allocated stable identity at confirmation.
+    savedBefore=current?structuredClone(current):undefined;saved={...next.skill,id:change.skillId};skills=next.workspace.skills?.map(s=>s.id===next.skill.id?saved!:s)
+   }
+   return {...workspace,skills,worlds:workspace.worlds.map(w=>w.id===worldId?{...w,chat:{...w.chat,conversations:w.chat.conversations.map(c=>c.id===conversationId?{...c,messages:c.messages.map(m=>m.id===message.id?{...m,proposal:{...proposal,savedAt:save===true?Math.max(Date.now(),...conversation!.messages.map(m=>(m.proposal?.savedAt||0)+1)):proposal.savedAt,fileChange:{...change,savedBefore,saved},status:save==='revert'?'pending':save?'saved':'rejected'}}:m)}:c)}}:w)}
+  }
+
   let documents=world.documents
   let savedBefore=proposal.savedBefore,savedAfter=proposal.savedAfter,savedAt=proposal.savedAt
   if(save){const doc=documents.find(d=>d.id===proposal.classId),entity=doc?.entities.find(e=>e.id===proposal.entityId)

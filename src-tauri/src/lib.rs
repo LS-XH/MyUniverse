@@ -3,6 +3,7 @@ mod functions;
 mod model_http;
 mod model_stream;
 mod workflow_ws;
+mod skills;
 use std::{collections::HashMap, fs, path::{Path, PathBuf}};
 
 fn user_dir() -> Result<PathBuf, String> {
@@ -220,7 +221,7 @@ mod tests {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![load_workspace, checkpoint_workspace, export_workspace, read_document_files, run_function, model_http::model_http,model_stream::model_stream,model_stream::cancel_model_stream, workflow_ws::watch_workflow_events, workflow_ws::stop_workflow_events, reveal_file, save_workflow_image])
+        .invoke_handler(tauri::generate_handler![load_workspace, checkpoint_workspace, export_workspace, read_document_files, run_function, model_http::model_http,model_stream::model_stream,model_stream::cancel_model_stream, workflow_ws::watch_workflow_events, workflow_ws::stop_workflow_events, reveal_file, save_workflow_image,skills::skill_packages,skills::change_skill_package])
         .run(tauri::generate_context!())
         .expect("error while running MyUniverse");
 }

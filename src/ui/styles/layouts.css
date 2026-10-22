@@ -70,6 +70,7 @@
 }
 .sidebar-header {
   height: 72px;
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -82,12 +83,6 @@
 }
 .sidebar-brand span {
   font-weight: 400;
-}
-.icon-button {
-  width: 29px;
-  height: 29px;
-  display: grid;
-  place-items: center;
 }
 .sidebar-actions {
   padding: 10px 16px 18px;
@@ -840,7 +835,7 @@
   display: flex;
   gap: 6px;
 }
-.graph-tools button {
+.graph-tools button:not(.ui-button--icon) {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1065,16 +1060,6 @@
 .tree-drop-placeholder {
   pointer-events: none;
 }
-@keyframes tree-gap {
-  from {
-    height: 0;
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-  
-}
 .flow-toolbar>strong {
   max-width: 260px;
   overflow: hidden;
@@ -1282,7 +1267,7 @@
   height: 68px;
   padding: 0 19px;
 }
-.plugin-sidebar .sidebar-header {
+:is(.plugin-sidebar,.models-sidebar) .sidebar-header {
   height: 68px;
   padding: 0 19px;
 }
@@ -2050,7 +2035,7 @@
   border-color: var(--border);
   color: var(--text);
 }
-.graph-tools .tool-active {
+.graph-tools .tool-active:not(.ui-button--icon) {
   background: var(--active);
   border-color: var(--accent);
   color: var(--accent);
@@ -2396,7 +2381,7 @@
 .graph-top h1 {
   font-size: 18px;
 }
-.graph-tools button {
+.graph-tools button:not(.ui-button--icon) {
   padding: 6px 8px;
   height: 32px;
 }
@@ -3102,10 +3087,6 @@
   width: 16px;
   height: 16px;
   flex: none;
-}
-.plugin-tree .plugin-root-row .tree-main span {
-  font-size: 13px;
-  font-weight: 600;
 }
 .plugin-tree .plugin-tree-branch {
   position: relative;
@@ -3900,7 +3881,7 @@
   overflow-wrap: anywhere;
   font: 12px/1.7 Consolas,monospace;
   margin: 10px 0 0;
-  user-select: text;
+  user-select: none;
 }
 .function-context-picker {
   display: grid;
@@ -4230,30 +4211,6 @@
 .function-readonly-value textarea {
   min-height: 96px;
   resize: vertical;
-}
-.models-sidebar-tree {
-  padding: 6px 14px 18px;
-}
-.models-sidebar-tree .tree-row {
-  height: 32px;
-  min-height: 32px;
-  margin: 3px 0;
-  padding: 0 5px 0 10px;
-}
-.models-sidebar-tree .tree-main {
-  gap: 9px;
-}
-.models-sidebar-tree .tree-main small {
-  margin-left: auto;
-  color: var(--muted);
-  font-size: 10px;
-}
-.models-sidebar-tree .model-nav-row {
-  padding: 0;
-}
-.models-sidebar-tree .tree-branch {
-  margin-left: 18px;
-  padding-left: 10px;
 }
 .model-management-page {
   display: flex;
@@ -4712,12 +4669,6 @@
 .topbar:has(.markdown-top-header.is-open) .topbar-page-actions {
   right: calc(clamp(280px,34%,420px) + 12px);
 }
-.topbar-page-actions .icon-button {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-}
 .topbar-page-actions .icon-button>span {
   display: flex;
 }
@@ -4729,14 +4680,6 @@
 }
 .editor-file-actions {
   display: none !important;
-}
-.models-sidebar-tree .tree-main span {
-  font-size: 12px;
-  font-weight: 400;
-}
-.models-sidebar-tree>.tree-node>.tree-row .tree-main span {
-  font-size: 13px;
-  font-weight: 600;
 }
 :is(.flow-canvas,.graph-canvas,.map-grid,.map-canvas,.flow-template-ghost) {
   -webkit-user-select: none;
@@ -6518,10 +6461,110 @@
 @media (max-width:1100px) {.runtime-log-tools input {width:120px}.runtime-log-title>span {display:none}.runtime-log-row {grid-template-columns:180px 36px 90px minmax(0,1fr);gap:8px}}
 @media (prefers-reduced-motion:reduce) {.runtime-log-panel {transition:none}}
 
-.graph-relation-filter {
-  height: 32px;
-  width: 140px;
-  min-width: 90px;
-  padding: 4px 8px;
-  border-radius: 6px;
-}
+.graph-relation-filter-wrap { position:relative; flex:none; }
+.graph-relation-menu .graph-relation-option--all { display:flex; align-items:center; gap:10px; min-height:36px; padding:8px 10px; border-radius:var(--ui-radius-6); font-size:12px; cursor:pointer; }
+.graph-relation-menu .graph-relation-option--all { position:sticky; top:-6px; z-index:1; margin-bottom:4px; border-bottom:1px solid var(--border); border-radius:0; background:var(--panel); font-weight:600; }
+.graph-relation-menu .graph-relation-option--all:hover { background:color-mix(in srgb,var(--accent) 12%,var(--panel)); }
+.graph-relation-menu .graph-relation-option--all input[type=checkbox] { display:block; flex:none; width:16px; height:16px; padding:0; margin:0; accent-color:var(--accent); cursor:pointer; box-shadow:none; }
+.graph-relation-menu .graph-relation-option--all input[type=checkbox]:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.graph-relation-count { margin-left:auto; color:var(--muted); font-size:11px; font-weight:400; }
+
+
+/* Script editing shares native textarea input, with a non-interactive syntax layer. */
+.function-code-input .script-editor { display:flex; position:relative; width:100%; min-width:0; min-height:360px; height:100%; overflow:hidden; background:var(--input); border:1px solid var(--border); border-radius:var(--ui-radius-7); font:13px/22px Consolas,'Courier New',monospace; }
+.editor-page .function-code-input .script-editor { min-height:0; border:0; border-radius:0; flex:1; }
+.script-editor:focus-within { border-color:var(--accent); }
+.script-line-numbers { flex:none; width:4.5em; padding:14px 10px; text-align:right; color:var(--muted); background:var(--panel); border-right:1px solid var(--border); overflow:hidden; user-select:none; font:inherit; }
+.script-line-numbers > div > div { height:22px; }
+.script-editor-body { position:relative; flex:1; min-width:0; overflow:hidden; }
+.function-code-input .script-editor .script-highlight,.function-code-input .script-editor textarea { font:13px/22px Consolas,'Courier New',monospace; font-variant-ligatures:none; tab-size:4; letter-spacing:normal; text-align:left; white-space:pre; word-break:normal; overflow-wrap:normal; padding:14px; box-sizing:border-box; }
+.function-code-input .script-editor .script-highlight { position:absolute; left:0; top:0; margin:0; width:max-content; min-width:100%; min-height:100%; color:var(--text); pointer-events:none; border:0; background:transparent; }
+.function-code-input .script-editor textarea { position:absolute; inset:0; width:100%; height:100%; min-height:100%; margin:0; border:0; border-radius:0; resize:none; background:transparent; color:transparent; -webkit-text-fill-color:transparent; caret-color:var(--text); overflow:auto; box-shadow:none; }
+.script-editor textarea::selection { background:color-mix(in srgb,var(--accent) 28%,transparent); }
+.script-token-keyword { color:var(--accent); font-weight:600; }
+.script-token-function { color:color-mix(in srgb,var(--warning) 65%,var(--text)); }
+.script-token-variable { color:color-mix(in srgb,var(--text) 80%,var(--accent)); }
+.script-token-string { color:color-mix(in srgb,var(--success) 70%,var(--text)); }
+.script-token-number { color:color-mix(in srgb,var(--danger) 65%,var(--text)); }
+.script-token-comment { color:var(--muted); font-style:italic; }
+.script-token-builtin { color:color-mix(in srgb,var(--accent) 65%,var(--success)); }
+.script-occurrence { background:color-mix(in srgb,var(--accent) 20%,transparent); outline:1px solid color-mix(in srgb,var(--accent) 40%,transparent); border-radius:2px; }
+.function-code-input .code-completions { max-height:240px; max-width:calc(100% - 24px); overflow:auto; }
+
+/* Organized trees share creation-tree geometry and the same useTreeDrag FLIP preview. */
+.sidebar .organized-tree {padding:7px 9px 18px;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden}
+.sidebar .organized-tree .tree-row {height:28px;min-height:28px;margin:3px 5px;padding:0;--ui-border-width:0;--ui-border-style:none;box-shadow:none}
+.sidebar .organized-tree .tree-main {gap:7px;padding:0 5px 0 9px;min-width:0}
+.sidebar .organized-tree .tree-main>span {font-weight:400}
+.sidebar .organized-tree .tree-main>svg {width:16px;height:16px;flex:none}
+.sidebar .organized-tree .tree-branch,.sidebar .organized-tree .plugin-tree-branch {display:flex;flex-direction:column;margin-left:14px;padding-left:9px}
+.sidebar .organized-tree .tree-branch::before,.sidebar .organized-tree .plugin-tree-branch::before {content:none}
+.chat-model-selector {min-width:0}
+.composer-footer>.chat-model-selector+.chat-model-selector {margin-left:8px}
+.skill-content-editor {font-family:var(--font-mono,monospace);resize:vertical}
+
+
+.model-form>label.skill-enabled {display:flex;align-items:center;gap:8px}
+.model-form>label.skill-enabled>input {width:15px;height:15px;margin:0;accent-color:var(--accent)}
+
+.agent-harness-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.agent-harness-grid>div {display:flex;flex-direction:column;gap:7px;padding:14px}
+.agent-harness-grid span {color:var(--muted);font-size:12px;line-height:1.6}
+.skill-content-editor {display:block;box-sizing:border-box;width:100%;min-height:280px}
+.skill-management .model-card {padding:20px;margin-bottom:18px}
+
+.skill-management .ui-field {--ui-radius:var(--ui-radius-8);padding:10px 12px;font-size:13px}
+
+/* Chat participants share the normal assistant avatar/content alignment. */
+.chat-process-timeline {display:flex;flex-direction:column;gap:12px;min-width:0;}
+.roleplay-output {display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;margin:16px 0;align-items:start;min-width:0;}
+.roleplay-message {min-width:0;}
+.roleplay-name {display:block;font-size:12px;color:var(--muted);margin:0 0 7px;}
+.roleplay-parts {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;min-width:0;}
+.roleplay-part[data-role-part="语言"],.roleplay-part[data-role-part="动作"],.roleplay-part[data-role-part="感官"] {grid-column:1/-1;}
+.roleplay-part {padding:10px 14px;min-width:0;overflow-wrap:anywhere;}
+.roleplay-part>small {display:block;color:var(--muted);font-size:11px;margin-bottom:5px;}
+.roleplay-part-speech {border-left:3px solid var(--accent);}
+.roleplay-part-detail {background:var(--input);}
+.chat-member-output {padding:14px 16px;margin:12px 0;min-width:0;}
+.chat-member-output>strong {display:block;color:var(--accent);font-size:12px;margin-bottom:8px;}
+.chat-all-process {margin-bottom:12px;}
+.chat-page-header button {margin-top:8px;}
+.message.assistant.roleplay-host-message {position:relative;}
+.roleplay-host-message>.assistant-avatar {position:absolute;left:0;top:0;}
+.message.assistant.roleplay-host-message>.message-content {max-width:100%;}
+.roleplay-host-message .chat-all-process,.roleplay-host-message .chat-final-text {margin-left:40px;}
+.chat-human-role {display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted);padding:0 0 10px;}
+.chat-human-role label {display:flex;align-items:center;gap:8px;}
+.chat-human-role select,.chat-human-role input {padding:5px 8px;width:auto;max-width:180px;font-size:11px;}
+.composer-footer .chat-stop-button {margin-left:auto;flex:none;}
+.composer-footer .chat-stop-button+.send-button {margin-left:0;}
+.chat-interjection {display:flex;flex-direction:column;align-items:flex-end;gap:5px;margin:12px 0;}
+.chat-interjection>small {font-size:11px;color:var(--muted);}
+.chat-interjection>.ui-message {padding:11px 17px;max-width:80%;border-radius:18px;background:var(--chatMessage);border:1px solid var(--border);}
+
+.chat-interjection>.chat-message-actions {position:static;}
+.chat-human-role .ui-field {border-radius:var(--ui-radius-8);}
+
+.chat-completion-menu {position:fixed;z-index:1800;width:min(340px,calc(100vw - 16px));max-height:280px;overflow:auto;padding:6px;box-shadow:0 8px 28px #0002;border-radius:var(--ui-radius-8);}
+.chat-completion-menu>small {display:block;padding:6px 8px;color:var(--muted);font-size:11px;}
+.chat-completion-menu .ui-menu-item {--ui-border-width:0;--ui-border-style:none;border:0;box-shadow:none;width:100%;display:flex;gap:9px;text-align:left;align-items:flex-start;padding:8px;border-radius:6px;}
+.chat-completion-menu [aria-selected="true"] {background:var(--active);}
+.chat-completion-menu [aria-disabled="true"] {opacity:.55;}
+.chat-completion-menu .ui-menu-item>span {min-width:0;display:flex;flex-direction:column;gap:3px;}
+.chat-completion-menu strong {font-size:12px;overflow-wrap:anywhere;}
+.chat-completion-menu .ui-menu-item small,.chat-completion-menu p {font-size:11px;color:var(--muted);overflow-wrap:anywhere;}
+.composer-footer {flex-wrap:wrap;row-gap:8px;}
+.composer-footer .chat-human-role {padding:0;flex:0 1 auto;}
+.composer-footer .chat-human-role input {max-width:120px;}
+.roleplay-part[data-role-part="旁白"] {grid-column:1/-1;line-height:1.9;}
+
+/* Completion menus follow the caret; inline coordinates are measured after layout. */
+.function-code-input .code-completions { right:auto; bottom:auto; width:max-content; min-width:min(200px,100%); }
+
+.model-capability-list {display:flex;flex-direction:column;gap:0;border:1px solid var(--border);border-radius:var(--ui-radius-8);overflow:hidden}
+.model-capability-list>.model-capability-option {border-radius:0;border:0;border-bottom:1px solid var(--border);padding:12px 14px;--ui-bg:var(--panel);box-shadow:none}
+.model-capability-list>.model-capability-option:last-child {border-bottom:0}
+.model-capability-list>.model-capability-option[data-selected=true] {--ui-bg:color-mix(in srgb,var(--active) 45%,var(--panel))}
+
+.model-capability-option>svg {flex:none;margin-top:3px;color:var(--muted)}

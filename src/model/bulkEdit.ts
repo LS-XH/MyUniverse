@@ -1,3 +1,4 @@
+import {referenceText} from './referenceText'
 import { Entity, FieldSchema, FieldValue } from './types'
 
 export type CommonField = { schema:FieldSchema; field:FieldValue; ids:string[]; path:string; mixed:boolean; mixedKey:boolean }
@@ -8,10 +9,13 @@ export function commonFields(entities:Entity[],schemas:FieldSchema[]):CommonFiel
   const walk=(groups:FieldValue[][],schemaList:FieldSchema[],prefix:string[]):CommonField[]=>schemaList.flatMap(schema=>{
     const matches=groups.map(group=>group.filter(field=>field.schemaId===schema.id))
     if(matches.some(group=>group.length!==1))return []
-    const fields=matches.map(group=>group[0]),path=[...prefix,schema.key||fields[0].key]
+    const fields=matches.map(group=>group[0]),mixedKey=fields.some(field=>field.key!==fields[0].key)
+    // Class keys are JSON references, never user-facing Markdown link syntax.
+    const label=schema.keyType==='Class'?(schema.key?referenceText(schema.key):mixedKey?'实例引用':referenceText(fields[0].key)):schema.key||fields[0].key
+    const path=[...prefix,label]
     if(fields.some(f=>f.functionOrigin))return []
     if(schema.valueType==='Object')return walk(fields.map(field=>field.children),schema.children||[],path)
-    const mixed=fields.some(field=>field.value!==fields[0].value),mixedKey=fields.some(field=>field.key!==fields[0].key)
+    const mixed=fields.some(field=>field.value!==fields[0].value)
     return [{schema,field:{...fields[0],value:mixed?'':fields[0].value,key:mixedKey?'':fields[0].key,functionResults:undefined},ids:fields.map(field=>field.id),path:path.join(' / '),mixed,mixedKey}]
   })
   return walk(entities.map(entity=>entity.fields),schemas,[])

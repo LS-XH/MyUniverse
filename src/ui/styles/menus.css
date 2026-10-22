@@ -17,6 +17,21 @@
   --ui-radius: var(--ui-radius-9);
   --ui-shadow: 0 12px 32px var(--ui-shadow-8);
 }
+.ui-reference-option {
+  --ui-bg: transparent;
+  --ui-fg: var(--text);
+  --ui-border-width: 0;
+  --ui-border-style: none;
+  --ui-radius: var(--ui-radius-5);
+  padding: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ui-reference-option:hover { --ui-bg: var(--hover); }
+.ui-reference-option > .reference-class { flex: none; }
+.ui-reference-option > .reference-option-name { min-width: 0; overflow-wrap: anywhere; }
+.ui-reference-option input[type=checkbox] { display:block; flex:none; width:16px; height:16px; padding:0; margin:0 8px 0 0; accent-color:var(--accent); cursor:pointer; box-shadow:none; }
+.ui-reference-option input[type=checkbox]:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .ui-menu--color {
   --ui-radius: var(--ui-radius-12);
   --ui-shadow: 0 18px 40px var(--ui-shadow-6);

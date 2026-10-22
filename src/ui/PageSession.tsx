@@ -1,4 +1,4 @@
-import { createContext, useContext, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction, type MutableRefObject, type ReactNode } from 'react'
 
 export type PageMemory=Map<string,unknown>
 const Context=createContext<PageMemory|null>(null)
@@ -7,6 +7,15 @@ export function usePageState<T>(key:string,initial:T|(()=>T)):[T,Dispatch<SetSta
   const [value,setValue]=useState<T>(()=>memory?.has(key)?memory.get(key) as T:typeof initial==='function'?(initial as ()=>T)():initial)
   if(memory)memory.set(key,value)
   return [value,setValue]
+}
+/** Mutable operation state survives page unmounts without entering the workspace archive. */
+export function usePageRef<T>(key:string,initial:()=>T):MutableRefObject<T>{
+ const memory=useContext(Context)
+ return useMemo(()=>{
+  if(!memory)return {current:initial()}
+  if(!memory.has(key))memory.set(key,initial())
+  return {get current(){return memory.get(key) as T},set current(value:T){memory.set(key,value)}}
+ },[memory,key])
 }
 const scrollSelector='.model-management-scroll,.page-scroll,.entity-list,.graph-config-content,.interface-config-body,.message-scroll,.markdown-code-editor,.flow-library'
 export default function PageSession({memory,children}:{memory:PageMemory;children:ReactNode}) {

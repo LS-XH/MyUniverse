@@ -14,6 +14,7 @@
 | 执行缓存与变量副本 | 每节点结果、命名输出、工作变量 | 一次运行 |
 | 选择、连接、历史、观察 | 编辑/运行状态 | 页面临时状态 |
 
+Agent 可选 preset 为 react/advanced/roleplay；config 包含 systemPrompt、toolIds、agentIds、skillIds、startupSkillIds、manageAgents、maxRounds。自带图及变量由配置确定性生成，用户界面不提供图编辑；会话协议作为本次初始 Messages，不存入共享世界记忆。模型连接仅保留请求参数，LLM 节点 settings.modelId 为 `$chat-model` 时从根调用 defaultModelId 解析。配置迁移与执行边界见 [模型与 Agent](../features/models-and-agents.md)。
 
 循环持有 WorkflowNode.body（scope=loop）并仅在该图内连线；方法体持有于变量池 Method 值的 graph（scope=method）。内置 break/continue 或方法返回使用稳定节点 ID，复制循环递归重建内图节点和线身份，复制方法卡片保留方法变量身份。编辑这些定义仍保存于 workspace.json，不写世界 Markdown。
 
@@ -173,4 +174,3 @@ Tool 旧类型统一迁移为 Tools，包括信封、封装值、variableType、
 workflowValues.ts：类型和值/成员；variablePool.ts：定义与记忆协调；workflowBindings.ts：端口引用；workflowMigration.ts：旧标签；workflows.ts：图校验；services/workflows.ts：运行工作副本；workflowTools.ts/workflowImages.ts：适配。
 
 重点验证严格类型、同名冲突、显式读写、引用配对、改名/清空/删除、世界隔离、失败不提交及工具调用 ID。验收方法见 [开发与验证](../development.md)，具体历次结果见 [修改日志](../changelog/README.md)。
-

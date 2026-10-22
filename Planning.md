@@ -1,54 +1,27 @@
 # MyUniverse 总体设计
 
-MyUniverse 是基于世界对象的小说创作工作台，使用 React、TypeScript、Vite 和 Tauri 2。人物、关系、势力、地点、事件、章节与插图按世界隔离；长期目标是让 Agent 在用户掌控的数据、模型和工具上完成设计、写作与绘图。当前 Agent 使用项目自己的 Graph 执行器。完整入口见 [文档目录](docs/README.md)，过程与历史验收见 [日志](docs/changelog/README.md)。
+MyUniverse 把小说世界建模为按项目隔离的类、实例和递归成员。用户定义结构、编辑内容，并通过关系网、地图、Function、Tool 和 Agent 使用同一份对象。完整规范从 [文档目录](docs/README.md) 进入；本文件只维护产品全貌。
 
 ## UI
 
-### 总体设计与复用
+四个主入口为创作、插件、模型、设置。侧栏组织对象，顶栏展示路径和当前页面动作，主区编辑对象；页面会话保留滚动、搜索、选择和画布视角。界面使用语义主题颜色、共享控件家族与统一手势，树拖动预览与最终落点保持一致。
 
-四个主入口为创作、插件、模型、设置；侧栏导航对象，顶栏显示路径并复用页面动作，主区编辑当前对象。树以缩进和箭头表示层级，单击打开、箭头或双击展开、右键只开菜单。世界项目直接作为创作树根。页面会话保留滚动、搜索、选择与视角。帮助按钮与头像之间的终端按钮打开底部覆盖式日志面板，带时间汇总状态、脚本输出和错误，不挤压原页面。
-
-主题提供语义颜色，共享 CSS 家族提供表面、按钮、输入、树行、卡片、菜单和浮层；Portal 继承主题。FieldCard、ReferencePicker、ConfigCard、SortHandle 和画布手势按对象复用。成员只做二维轻微突出；拖动平时保留形态，进入兼容边界才连续变形，松开提交。详见 [设计原则](docs/ui/design-principles.md) 与 [样式复用](docs/ui/styles.md)。
-
-### 页面与编辑载体
-
-文件页面提供实例、递归成员、搜索、多选、复制/剪切/粘贴、历史与标签；Markdown 双栏是后台生成的只读导出预览，展示导出基线的行差异及选中范围。实例、文件与父集合用圆点提示未保存状态；类名旁的函数开关控制生成值显示，顶部强调色进度条展示刷新与函数计算进度。属性配置定义 Schema，不从正文猜结构。
-
-人物关系网固定人物结构，展示重复关系、势力、个人关系聚焦及格式可见性；地图配置父类与对象绑定。聊天展示 Markdown 回复、实际思考、工具与子 Agent 过程、待采纳差异。工作流以画布为主体，Agent/SD 的配置、运行、节点库共用右侧停靠区，变量池位于节点库下方。详见 [页面](docs/ui/pages.md)、[聊天 UI](docs/ui/chat.md)、[工作流 UI](docs/ui/workflow-editor.md)。
+创作区包含实例与属性配置、只读 Markdown 差异预览、人物关系网、关系类型网、地图和聊天。Function/Tool 使用脚本编辑器，Agent/SD 使用工作流画布；ReAct 和高级 Agent 通过配置页使用应用生成的核心流程。详情见 [UI 模块](docs/ui/README.md)。
 
 ## 数据结构
 
-### 世界对象与身份
+Workspace 保存世界及全局配置，World 隔离导航、类文档、视图和聊天。ClassDocument 通过 FieldSchema 约束 Entity 的 FieldValue；实例、成员、绑定和来源使用稳定身份。世界成员类型、Function 类型值、工作流八型变量分别定义。
 
-Workspace 管理 World 和全局插件、模型、Agent、主题；World 包含导航、类文档、视图与聊天。ClassDocument 由 FieldSchema 定义 Entity 的 FieldValue 结构。Key 为 Text/Const/Class，Value 为 Object/Class/Data/Text/Content/Integer/Decimal/Null。重复成员共享声明而保持独立 ID；引用、绑定和组织依赖稳定身份。默认世界包含人物、关系、势力、地点、事件类。详见 [世界数据](docs/data/world.md)。
-
-### JSON 与 Markdown
-
-JSON 保存完整工作区快照、组织、身份、结构、标签、配置和函数执行元数据；JSON 是唯一对象恢复来源，Markdown 仅负责明确导入导出。类正文、Schema 和视图 JSON 平铺于 worlds/世界ID，集合与插件文件夹仅为虚拟组织。正文以一级类、二级实例、递归成员标题表达结构；引用只展示实例名，函数来源与所有权仅保存在 JSON，不写入正文注释。详见 [JSON 存储](docs/data/json-storage.md) 与 [Markdown 格式](docs/data/markdown.md)。
-
-### 视图、聊天与工作流
-
-地图 current 绑定用 Schema 路径，fixed 绑定用具体成员路径；视图布局独立于实例内容。聊天可见消息与完整模型协议分开，提议保留原世界/会话身份。WorkflowGraph 与 Function Flow 是不同结构；工作流有 String/Number/Boolean/Messages/Image/Tools/Agents/Method 八型变量，Tools/Agents 只存注册身份。详见 [视图](docs/data/views.md)、[聊天](docs/data/chat.md)、[工作流数据](docs/data/workflow.md)。
+workspace.json 是世界及应用配置的权威恢复来源；Markdown、Schema 和视图文件用于显式交换。Skill 使用独立目录包，内存 Workspace.skills 不写入工作区 JSON。虚拟集合和文件夹只组织导航。格式与示例见 [数据模块](docs/data/README.md)。
 
 ## 功能
 
-### 编辑、保存与刷新
+对象编辑自动存档 JSON，保存命令显式导出，刷新、导入、填入分别有明确范围和来源规则。绑定 Function 通过受限 void/add 契约扩展可重复结构；Tool 使用自由 JSON Schema，官方世界修改能力先生成提议供用户采纳。
 
-所有对象及配置编辑自动存档至完整 JSON。Ctrl+S 和保存全部明确导出文件，Ctrl+R 按属性配置将 Markdown 填入 JSON，保留缺失实例与分支，再计算当前范围的绑定函数；独立函数计算不导入正文。解析、函数、差异与 JSON 编码使用 Worker，导入及计算逐实例提交；原生文件读写使用阻塞线程池，取消保留已完成对象。详见 [持久化功能](docs/features/persistence.md)。
+工作流按依赖求值，使用惰性条件、顺序、内部循环及方法编排。模型只负责连接；Agent 负责策略、能力和执行，Skill 提供按需规则与专属工具。聊天固定 Agent 身份，支持流式过程、会话成员、插话、引用、用量和提问。SD 图交给外部 ComfyUI 执行。功能规则及调用方法见 [功能模块](docs/features/README.md)。
 
-### Function、Tool 与 API
+## 实现边界
 
-绑定 Function 为 transform(self,input) 的 void/add 程序，只能向绑定范围的既有可重复结构添加，不能改写用户原值；生成内容只读，所有权由函数 ID 与绑定成员 ID 决定。JS/Flow 与用户 JS Tool 在后台 Worker 运行，Python 以快照和日志桥接。Tool 使用自由 JSON Schema 参数与可传输返回值，共用世界门面和运行草稿事务。官方十一项工具负责查询、修改/新增提议，提议需用户采纳，采纳进入自动 JSON 存档。详见 [Function](docs/features/functions.md)、[Tool](docs/features/tools.md)、[官方工具](docs/features/official-tools.md)、[API 方法](docs/features/api.md)。
+外部技能下载与安装、插件发现安装、自动章节写作与插图归档、远程及对外 MCP、图片像素加工、完整 ComfyUI 前端布局导入尚未实现。通用工作流 Function 节点缺少 bindingPath，不能直接运行新 void 函数写世界。对象事务、Agent 记忆事务与磁盘单文件替换范围不同，详见 [架构边界](docs/architecture.md#提交与取消边界)。
 
-### 视图、Graph、模型与聊天
-
-人物关系网操作写回人物源对象，布局独立；地图标记拖动只更新该视图覆盖。Graph 按全叶子反向深度优先求值，返回最后；顺序执行、内部循环及方法体与惰性条件显式编排，基础 LLM 请求一次，ToolCalls 执行能力并返回工具结果片段。子 Agent 共享预算、世界和取消信号，独立变量，根成功统一提交记忆。聊天通过 SSE 流式请求，固定发起会话，支持消息编辑重发。SD 接入外部 ComfyUI API 图与取图。详见 [视图功能](docs/features/interface-views.md)、[工作流执行](docs/features/workflow-execution.md)、[模型与 Agent](docs/features/models-and-agents.md)、[聊天功能](docs/features/chat.md)。
-
-## 能力边界与维护
-
-Skill 执行、插件安装/发现、自动章节写作、插图归档、远程/对外 MCP、像素加工和完整 ComfyUI 前端布局导入仍待实现；人物关系网双实线渲染待完善。接口存在不等于真实供应商或 GPU 联调通过。通用工作流 Function 节点尚无 bindingPath，不能直接运行新 void 函数写世界。桌面保存为单文件原子替换，整批文件没有磁盘事务回滚。
-
-[架构](docs/architecture.md) 说明调用链，[开发与验证](docs/development.md) 说明验收与交付，[文档维护](docs/documentation-guide.md) 规定主题归属。历史原始需求及本次整理前原文均收进日志，后续追加必须更新所属对象章节。
-
-聊天工具支持只读子成员定向修改提议（精确标题路径及重复项 ID 消歧），并支持向用户提问等待选项或自填回答；提议复用确认与回退，提问随调用过程持久化、取消时终止且重启不重放。细节见 docs/features/official-tools.md 与 docs/ui/chat.md。
-
+源码导航见 [架构](docs/architecture.md)，开发和验收方法见 [开发指南](docs/development.md)。追加需求和历次验证放入 [日志](docs/changelog/README.md)，现行专题按对象章节更新。

@@ -1,3 +1,4 @@
+import {toolRole} from '../model/toolRoles'
 import {logOperation} from './runtimeLog'
 import {canonicalTool} from '../model/builtinTools'
 import {runBuiltinTool} from './builtinTools'
@@ -37,7 +38,9 @@ async function executeTool(tool:ToolDefinition,parameters:unknown,world?:World,s
   if(!tool.enabled)throw new Error('Tool 已停用')
   if(signal?.aborted)throw new DOMException('已取消','AbortError')
   toolParameters(tool,parameters)
-  if(tool.kind==='builtin')return runBuiltinTool(tool,parameters as Record<string,string>,world,context)
+  if(tool.kind!=='builtin'&&toolRole(tool)==='ask'){const p=parameters as {question?:unknown;options?:unknown};if(!context?.askUser||typeof p.question!=='string'||!Array.isArray(p.options)||p.options.some(o=>typeof o!=='string'))throw new Error('交互工具需要聊天上下文及 question:string、options:string[]');return context.askUser(p.question,p.options as string[])}
+  if(tool.kind!=='builtin'&&toolRole(tool)==='write'){if(!context?.askUser)throw new Error('写入工具需要聊天中的用户确认');const answer=await context.askUser(`是否执行「${tool.name}」？\n`+JSON.stringify(parameters,null,2),['保存并执行','放弃']);if(answer!=='保存并执行')return {status:'rejected',message:'用户放弃，工具未执行'}}
+  if(tool.kind==='builtin')return runBuiltinTool(tool,parameters as Record<string,string>,world,context,signal)
   if(tool.kind!=='js'){
     if(!tool.url)throw new Error('Tool URL 为空')
     return http({url:tool.url,method:tool.method,apiKey:tool.apiKey,body:tool.method==='GET'?undefined:tool.bodyMode==='raw'?parameters:{input:parameters},signal})

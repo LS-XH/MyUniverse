@@ -1,3 +1,5 @@
+import {normalizeAgentModels} from './builtinAgents'
+import {installBuiltinTools} from './builtinTools'
 import { reconcileFunctionBindings } from './functionAppend'
 import {normalizeChatRuns} from './chatRuns'
 import {migrateWorkflowTypes} from './workflowMigration'
@@ -24,6 +26,7 @@ export const themeFields: {key:keyof ThemeColors;label:string}[] = [
   {key:'danger',label:'危险与错误'}, {key:'success',label:'成功状态'}, {key:'warning',label:'警告状态'}
 ]
 export function normalizeWorkspace(workspace: Workspace): Workspace {
+  workspace=normalizeAgentModels(installBuiltinTools(workspace))
   return reconcileFunctionBindings(normalizeChatRuns({...workspace,tools:workspace.tools||[],sdWorkflows:(workspace.sdWorkflows||[]).map(migrateWorkflowTypes),agents:(workspace.agents||[]).map(migrateWorkflowTypes),pluginFolders:workspace.pluginFolders||[],functions:workspace.functions||[],models:(workspace.models||[]).map(model=>({...model,enabled:model.enabled!==false})),themeId:workspace.themeId||'violet',themes:(workspace.themes||[]).map(theme=>({...theme,colors:{...violet,...theme.colors}})),worlds:workspace.worlds.map(normalizeWorld)}))
 }
 function normalizeWorld(world: World): World {

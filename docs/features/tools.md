@@ -15,6 +15,8 @@
 
 具体 Function 规则见 [Function](functions.md)。绑定 Function 没有业务返回结果；旧独立返回接口的结果大小限制不套用于 Tool。JS 脚本源码和共用异步等待仍有执行器约束。无限返回是“不限定业务类型”，不意味着绕过 JSON 传输要求。
 
+Skill 的 scripts 使用同一 Tool 定义及 JS/HTTP 执行器，配置与源码独立保存在该技能包中，不进入全局 workspace.tools；加载、白名单与动态注册见 [Skill](skills.md)。
+
 ## 世界对象 API
 
 Function 与 JS Tool 共用稳定 ID 门面，接口和示例统一维护于 [API 使用方法](api.md#世界对象门面)。绑定 Function 只有受限 add 权限，用户 Tool 使用通用门面。
@@ -23,7 +25,7 @@ Function 与 JS Tool 共用稳定 ID 门面，接口和示例统一维护于 [AP
 
 ScriptHost 从当前主程序获取世界 base，维护不可变 draft 和 open 状态。脚本门面读写该会话草稿；执行完成且添加结构或 Tool 返回通过各自契约校验后，与运行期间最新 UI 世界三方合并，同一内容冲突拒绝提交。异常、取消、Schema/类型/JSON 错误丢弃草稿。
 
-Function 内部执行状态可与 add 新增字段原子提交，不将函数返回变成 Markdown 成员。主程序关闭隐式落盘，新增内容作为未保存草稿，主程序自动调用 checkpointWorkspace 保存完整 JSON；用户明确保存时 saveWorkspace 导出文件，不读取或合并旧 Markdown。`await app.storage.save()` 只记录保存请求；当前 AppRoot 绑定 autoSave:false，成功提交不隐式导出 Markdown，对象仍由主程序自动 JSON 存档。
+Function 内部执行状态可与 add 新增字段原子提交，不将函数返回变成 Markdown 成员。主程序关闭脚本隐式导出，新增内容先提交内存对象，主程序自动调用 checkpointWorkspace 保存完整 JSON；用户明确保存时 saveWorkspace 导出文件，不读取或合并旧 Markdown。`await app.storage.save()` 只记录保存请求；当前 AppRoot 绑定 autoSave:false，成功提交不隐式导出 Markdown，对象仍由主程序自动 JSON 存档。
 
 内存已提交但磁盘失败时保留本地修改，报告统一同步错误；不声称落盘成功，不回滚其他用户编辑。Tool 提交是一次调用事务，不能等同于整次 Agent 成功才提交的局部记忆。
 
@@ -53,11 +55,11 @@ HTTP Tool 复用 modelRequest，bodyMode=input 包装 input，raw 使用原参�
 
 ## 官方注册表
 
-registeredTools 合并程序冻结模板与用户定义，builtin: 命名空间保留；伪造同 ID 不能覆盖官方版本。侧栏、编辑页、模型选择和工作流使用同一个注册表。官方模板不能改、删、移，调用上下文与测试参数仍可设置。契约由 [官方 Tool](official-tools.md) 负责。
+registeredTools 合并应用自带定义和用户工具。自带项仅允许 description 与 folderId 覆盖：名称、调用名、实现、Schema、annotations 保持应用定义，不能删除；说明进入 LLM 请求，所属文件夹通过侧栏拖动调整。工作区持久化两个可编辑字段并保留稳定 ID，不允许其他字段冒充自带实现。用户 JS/HTTP 工具保持原编辑方式。侧栏、编辑页、模型选择和工作流共用注册表；契约见 [应用自带 Tool](official-tools.md)。
 
 ## Agent 调用与 Tool 事务
 
-Agents 为独立严格类型，复用 Tool 的调用名、说明、参数 Schema 与可传输返回规则。模型请求将两类转 function 描述，内部保留稳定类别/ID，重名明确失败。子 Agent 共享根世界、会话、取消与预算，独立变量和暂存记忆；根统一成功提交记忆，Tool 世界写入保持本文件的独立事务。递归预算和调用 Schema 见 [模型与 Agent](models-and-agents.md#agent-的执行模型)。
+Agents 为独立严格类型，复用 Tool 的调用名、说明、参数 Schema 与可传输返回规则。模型请求将两类转 function 描述，内部保留稳定类别/ID，重名明确失败。子 Agent 共享根世界、会话、取消与预算，独立变量和暂存记忆；根统一成功提交记忆，Tool 世界写入保持本文件的独立事务。递归预算和调用 Schema 见 [模型与 Agent](agents.md#agent-的执行模型)。
 
 ## 模型与 MCP 桥梁
 
@@ -74,3 +76,7 @@ toolSpec/mcpToolResult 输出 MCP 风格描述与 text/structuredContent；model
 hostWorldApi.ts/scriptHost.ts：门面与会话；tools.ts：Schema、运行、结果；workflowTools.ts：Tools 解析；llm.ts：模型交流；builtinTools.ts：官方注册/处理；ToolsPage.tsx：编辑；AppRoot.tsx：主程序绑定。
 
 验证读取懒转换、写入/删除、冲突、失败回滚、取消失效、显式刷新 Function 新增字段与执行状态原子提交、JSON 参数、工具调用 ID 与 Python 日志。真实供应商 ToolUse 需实际服务，详见 [开发与验证](../development.md) 和 [修改日志](../changelog/README.md)。
+
+## 工具职能与确认
+
+ToolDefinition.role 显式声明 read/write/ask/action，自建项在配置中选择；未声明时只使用已知内置身份与 annotations 推导，不根据名称猜测。readOnlyHint=false 的自建工具视为 write。write 自建 JS/HTTP 调用先通过聊天提问展示名称和参数，用户选择“保存并执行”后才执行，放弃返回 rejected，无聊天确认上下文则拒绝。ask 自建工具使用 question:string、options:string[] 参数，复用聊天提问并返回用户文字，不另外发 HTTP/执行脚本。应用 Runtime 文件工具提供更具体的差异提议，详见 [修改提议](proposals.md#runtime-文件提议)。

@@ -1,110 +1,95 @@
 # 开发、交付与验证
 
-## 开发入口
+本文件维护可重复的开发方法与验证入口，某次构建、测试数量、截图、耗时和交付结果只记入 [日志](changelog/README.md)。源码分层见 [架构](architecture.md)，逐文件导航见 [源码索引](source-map.md)。
 
-在仓库根目录运行：
+## 环境与命令
 
-```text
-npm install
-npm run dev
-npm test
-npm run build
-npm run desktop:build
-cargo test --release --manifest-path src-tauri/Cargo.toml
-```
+前端需要可运行 Vite 7/TypeScript 5 的 Node.js 与 npm；桌面还需 Rust、Tauri 2 的系统构建依赖和 Windows WebView 环境。Python Function 需要另装 Python 3，ComfyUI 需要外部服务；它们不是前端构建自带能力。
 
-package.json 为当前命令来源。npm test 通过 scripts/test-markdown.mjs 打包并执行各类 TypeScript 测试，测试使用模拟数据/文件；不是把全部测试当作 Markdown 单一功能。Rust 测试覆盖桌面保存、路径、Python、网络和 WebSocket 等行为，Python 项依赖本机解释器。
+| 命令 | 用途 |
+| --- | --- |
+| npm install | 按 package.json/lock 安装依赖 |
+| npm run dev | 默认 127.0.0.1:1420，strictPort；用户数据和 Rust 构建目录不监听 |
+| npm run dev -- --port 1425 | 使用独立开发端口打开测试夹具 |
+| npm test | scripts/test-markdown.mjs 内存打包并运行全部导入的测试 |
+| npm run build | tsc -b 与 Vite 前端构建 |
+| npm run tauri dev | 桌面开发运行 |
+| npm run desktop:build | Windows 独立 target-next 构建及可执行文件替换 |
+| cargo test --manifest-path src-tauri/Cargo.toml --lib | Rust 桥及文件测试；需对应系统工具链 |
+| node tests/sse-server.mjs | loopback:1431 本地模拟模型 SSE 服务 |
 
-单纯文档重整检查结构、链接、代码契约及历史完整性，不用构建成功充当文档设计正确性的证据。代码修改按实际影响运行相应测试及要求的构建；不要用历史测试数量替代当前命令结果。
+浏览器是功能预览：工作区与技能包使用不同 localStorage key，JSON 写入仍同步；不拥有桌面 user 目录、Python 或资源管理器能力。
 
 ## 桌面交付
 
-代码功能修改的收尾顺序：更新所属模块文档与日志 → 执行相关测试 → 前端生产构建 → `npm run desktop:build` 生成 exe 并更新正式程序及根目录快捷方式 → 核对正式路径替换状态后报告结果。仅前端构建通过不能视为桌面交付完成。纯文档修改无需打包。
+scripts/build-desktop.ps1 先从三个关系示例刷新 bundledRelationshipScripts.json，再以 src-tauri/target-next 编译，复制到 src-tauri/target/release/my-universe.exe，并更新项目根快捷方式。运行中的 exe 被锁定时启动隐藏 install-desktop.ps1，最多等待两小时，每 5 秒重试替换，状态记录于 .desktop-update-status.json。实际替换状态与源码构建成功分开记录。
 
-桌面可执行名称固定 my-universe.exe。scripts/build-desktop.ps1 使用 target-next 构建，以免正在运行的正式 exe 阻止编译；成功后复制到 src-tauri/target/release 并更新项目根快捷方式。
+release 的 user 位于 exe 同目录，debug 使用工作目录。更新不得删除、移动或覆盖用户工作区作为测试夹具。普通前端构建不会代替用户正在运行的桌面 exe；本次是否重建必须在日志明确记录。
 
-正式 exe 被占用时以隐藏安装器排队，保留编译产物；关闭当前程序后尝试替换，不强制终止用户进程。install-desktop.ps1 最长等待约两小时，以 .desktop-update-status.json 记录 pending/installed/timeout。构建完成、正式路径替换完成、运行的是新版本需要分别确认。
+## 验证层次
 
-release 数据写入 exe 同路径 user，debug 数据写入工作目录 user；验收不得将测试世界、模型、脚本和建议混入用户实际项目。临时内存页面与测试夹具用于验证交互和接口，必要的服务测试明确区分模拟/真实。
-
-## 验收分层
-
-长文档回归夹具位于 tests/performance.test.ts，随 npm test 检查大文本解析、引用索引失效与独立修改合并。启动开发服务器后可访问 `/tests/performance-ui.html`，使用真实 DocumentWorkspace 组件检查 20 万字正文及 2,000 个引用选项；夹具只使用内存，不写用户存档。验收应检查长文本内部滚动、菜单首批数量、末尾目标搜索/选择、预览定位与普通短文本行为。数据层耗时不能替代 WebView 帧率；真实桌面和用户文档验收分别记录。
-
-| 层次 | 验证内容 | 不能替代 |
+| 层次 | 能证明的内容 | 实施要求 |
 | --- | --- | --- |
-| 模型/单元测试 | 转换、类型、身份、事务、图与配对规则 | 实际布局/手势 |
-| 前端构建 | TypeScript 和资源编译 | 业务正确及桌面交互 |
-| Rust/桌面构建 | 原生桥与可执行产物 | 新 exe 已替换/已运行 |
-| 浏览器真实页面 | 布局、缩放、动画、事件、菜单与画布 | 桌面运行环境和用户服务 |
-| 桌面验收 | WebView、磁盘、解释器、资源管理器 | 供应商模型/GPU 成功 |
-| 真实服务联调 | ToolUse 协议、鉴权、网络、GPU 出图 | 其他服务兼容性 |
+| 类型/构建 | TypeScript 接口与打包 | npm run build；不证明交互、Python 或服务可用 |
+| 模型/服务回归 | 转换、Schema、事务、迁移、模拟 Graph/SSE | npm test 使用内存与本地夹具，不写真实世界 |
+| UI 内存夹具 | 实际组件、主题、DOM、手势、状态 | 使用 tests/*.html，记录具体操作与观察 |
+| Rust 测试 | 文件路径、独立包、原子写入、网络桥、Python 桥 | 临时目录/本地服务；Python 结果取决于实际解释器 |
+| 桌面端到端 | WebView、文件对话框、进程取消、重启恢复和实际替换 | 在隔离数据位置验收，区分构建与运行版本 |
+| 真实服务 | 供应商协议、ToolUse、Skill 自主选择、GPU 输出 | 单独记录服务、输入和真实返回；模拟不能替代 |
 
-## 功能检查清单
+## 按功能选择回归
 
-### 世界与存储
+测试执行列表以 [test-markdown.mjs](../scripts/test-markdown.mjs) 为准；新增文件若未导入不会由 npm test 自动发现。
 
-启动仅恢复 JSON，所有对象自动 checkpoint，导出不修改权威存档，导入按当前 Schema 解析且逐实例发布。验证完整 ID/来源/聊天恢复、旧 JSON 一次备份、无效导入、取消保留已完成实例、并发编辑冲突及限定导出不验证无关类。存档失败需提示并可重试，导出前等待正在写入的 JSON。
+| 主题 | 代表测试 | 必查契约 |
+| --- | --- | --- |
+| 世界/Markdown/JSON | markdown、plainMarkdown、jsonRuntime、manualSave | 固定 Schema、引用、纯文本导出、来源保留/清除、启动零正文读取、限定导出不覆盖存档 |
+| 编辑/排序/过滤 | instanceEditing、bulkEdit、sorting、attributeFilter、treeMoves、treeDragHit、libraryTreeOrder、visitHistory | 递归副本身份、标签、组排序、源树完整性、混排 DOM 与预览落点、导航分支 |
+| Function/脚本 | functions、flow、scriptHost、relationshipFunction、scriptEditor | void/add 范围、生成所有权、失败回滚、逐实例提交、模板、语法编辑契约 |
+| Tool/提议 | builtinTools、workflowTools | 官方实现保护、Schema、原调用 ID、待确认、冲突合并、批量/回退、问题取消 |
+| 工作流 | workflows、workflowStructure、workflowEditing、workflowExecution、agentGraph | 全叶子/返回顺序、惰性、共享缓存、内部循环/Method、绑定及根预算 |
+| 视图 | interfaceViews、graph、relationGraph | current/fixed 路径、逐值关系、源写回、只读生成值、布局与聚焦隔离 |
+| Agent/Skill | models、agentSettings、agentSessions、roleplayConversation、skillPackages、runtimeSkills | 稳定迁移、删除不复活、成员私有隔离、输出校验、显式/自主许可、文件版本和失败 |
+| 聊天/网络 | sse、chatPresentation、chatDirectives、chatUsage | UTF-8 拆包、工具参数累积、插话、编辑快照、引用和实际请求用量 |
+| 主题/诊断/性能 | themes、runtimeLog、performance | ARGB、Portal、日志限量与有界格式化、网络状态不记录密钥、视角不重算和局部更新 |
 
-### 脚本、工具与建议
+## UI 夹具索引
 
-JS/Flow 复用主程序门面；绑定 Function 检查 void 忽略返回、add 类型与可重复结构、绑定范围、禁止修改既有值、深层添加、失败原子回滚及自身新增不递归触发。纯文本 Markdown 导入相同值时经 JSON 保留来源，解绑/换绑/删除清理正确，副本重映射绑定成员 ID；生成字段编辑/删除/批量改写被拒绝；Markdown 不输出函数来源注释或实例引用链接，输入、脚本、绑定和布局变化都不自动执行；选择文件的 Markdown 填入不执行绑定，刷新导入成功后重新计算，独立重新计算不读取正文，函数提交自动 JSON 存档。Tool 与旧独立调用另外检查读取懒转换、写入/删除、传输和冲突拒绝。Python 快照和操作日志按契约。官方定义不可被伪造覆盖，建议提交不写实例，保存需再次校验基线，原世界/会话及状态持久化正确。
+每个 HTML 与同名 TSX 配对，使用内存世界；完整文件列表见 [源码索引](source-map.md#tests)。在运行开发服务器后访问 /tests/<名称>.html。
 
-### 工作流数据
+| 对象 | 夹具名称 |
+| --- | --- |
+| 主题与共享组件 | ui-styles、modern-ui、native-interaction-ui、library-icons-ui |
+| 树与排序 | tree-ui、tree-drop-ui、tree-hit-ui |
+| 实例与保存 | instance-edit-ui、instance-actions-ui、instance-name-ui、manual-save-ui、attribute-filter-ui、markdown-diff-ui、json-runtime-ui、refresh-function-ui |
+| 视图与引用 | view-tree-ui、person-relations-ui、relation-graph-ui、graph-selection-ui、graph-layout-ui、graph-history-ui、reference-picker-ui |
+| 编辑器 | script-ui、script-editor-ui、function-templates-ui |
+| Agent 与聊天 | agent-ui、agent-settings-ui、agent-runtime-ui、multiagent-chat-ui、chat-controls-ui |
+| 诊断与压力 | runtime-log-ui、performance-ui |
 
-严格信封、类型兼容、同名冲突、显式读写与端口引用；方法不隐式保存。世界记忆隔离、失败/取消不提交，清空/删除/改名同步记忆。基础 LLM 只一次、无隐藏系统词和默认工具；ToolCalls 返回片段配对后合并，自动卡片保留兼容。
+## 交互验收方法
 
-### 交互与比例
+树拖放比对松开前占位/目录高亮与提交后的 DOM 顺序、parentId；检查混排、移入移出、禁用目标、取消及自动滚动。画布拖放观察真实尺寸、多帧位置和不同缩放，验证普通移动不断线、仅兼容槽变形、库内释放不创建、取消恢复；只检查类名不足以证明手势正确。
 
-树/列表同宽拖动、挤位和有效释放，取消恢复；无层级线。节点库搜索固定、全部展开递归、变量池向上挤内容、主题菜单可读。
+实例编辑检查筛选后隐藏旁支保留、多选组排序、标签、剪切与跨页撤销；巨大 Content 保留完整值，预览关闭后不生成全文。关系网检查逐值选择与删除、类型多选、生成只读、1～5 级聚焦、中心新增、布局历史及源类文件操作。页面必须沿真实父容器链填满剩余高度。
 
-库内释放不在背后创建；空白矩形尺寸等于正式节点。不同缩放下宽高、文字、图标、边距均按同比例变化。普通变量与连线连续跟随；仅在列表内变行，完整卡片直接向兼容槽变形填入，鼠标未释放可拖走。内嵌拖出直接由引用恢复完整卡片；超过阈值后原槽隐藏但保留布局，取消恢复，完整预览内容不带画布位置偏移。端口行细边框/浅光而不突出，内嵌变量无边框、静止透明、悬停使用主题 hover 背景。点击引用本体不解除，解除按钮仍有效。
+聊天检查主/子过程、已校验公开输出、等待问题、插话后取消重算、完成顺序、引用标签/IME、费用浮窗、返回焦点与左右主题。生成过程不得访问真实模型或磁盘作为模拟夹具；真实供应商行为另记。重新加载检查 running 转 interrupted，问题不重放，目标失效不切换，成员私有上下文不进入其他成员。
 
-右键空白禁用选择动作；配置/运行避开节点库，空白关闭；切页恢复视角及展开。测试应观察实际 DOM 尺寸与多帧路径，不仅检查 CSS 类存在。
-
-### 投影视图
-
-当前/固定绑定、重复路径和原引用身份；地图支持任意父类；关系网固定人物结构，配置无父类/显示绑定，重复关系按第一值取色并显示全部文字；关系写回源对象、布局独立。真实容器链画布有剩余高度，大型视图平移/缩放不重复投影；源字段变化仍实时更新。
-
-## Graph 与流式聊天验收
-
-自动用内存夹具验证内部循环一轮/多轮/硬上限/嵌套/非法回边、惰性分支零副作用、共享依赖缓存、inline 连线写入与分发、Agents 严格类型/Schema、显式与自主调用、递归预算、取消和记忆冲突。SSE 使用本地 HTTP 服务逐字节拆包，覆盖中文 UTF-8、多行/换行、思考/tool_calls 参数累积、异常结束与浏览器取消；Rust 用本地 TCP 服务验收 POST/认证/字节与任务取消。
-
-`npm run dev -- --port 1425` 与 `node tests/sse-server.mjs` 启动仅内存的 tests/agent-ui.html，使用实际 ChatPage/WorkflowEditor 与 loopback:1431 模拟 SSE，不加载/保存用户工作区。检查统一选择禁用原因、流式过程、子调用嵌套、建议及时出现/采纳/拒绝、主题、端口共存、拖动、缩放和撤销。真实模型联调、原生窗口交互、重启恢复与磁盘失败需分别记真实结果，模拟不能替代。
-
-工作流框架验收：检查独立叶子完成后返回、condition 优先、IF 非选分支零副作用、顺序卡片全分支与原值身份、repeat 硬上限、break 跳过 continue 依赖、嵌套轮次缓存隔离、方法无参/无返回及共享池、方法深度与取消不提交。UI 用 tests/agent-ui.html 内存夹具核对内部导航、保护终止节点、库拖放、分支数量与跨画布撤销，不写真实世界。旧回边图需明确报错并保留导出内容。
-
-## 测试和页面入口
-
-模型测试位于 tests/*.test.ts，覆盖 Markdown/关系/模型/排序/Function/Flow/批量编辑/Agent/图编辑/观察/投影/脚本/官方工具/类型引用。tests/fixtures 的 Markdown 是业务样例，不是设计文档。
-
-tests/tree-ui.html/.tsx 与 tests/script-ui.html/.tsx 提供临时内存交互场景。图标授权见 src/assets/workflow-icons/README.md，属于资源说明，不迁入设计日志。
-
-tests/instance-name-ui.html/.tsx 使用 400 个生成实例、周期 Function 检查和响应间隔记录验收实例名称输入；可开关 Markdown 预览检查双向同步及隐藏编辑器是否卸载。它只使用内存，不执行用户脚本、不写用户工作区。实际数据性能测量只读取本地快照，分别计时检查、合并、导出与源码定位，不能把单项 Node 耗时当作桌面整次输入耗时。
+性能测量分别记录扫描、解析、合并、导出、DOM 更新与实际输入延迟；单项 Node 耗时不是桌面整次输入耗时。历史截图及性能数字不作为当前设备保证。
 
 ## 当前能力边界
 
-| 能力 | 当前状态 |
+| 能力 | 状态 |
 | --- | --- |
-| 对象、Schema、Markdown 导入导出与 JSON 自动存档 | 已实现 JSON 自动存档、明确 Markdown 导入/导出；不自动发现未知文件或从正文推断 Schema |
-| 关系网/地图投影 | 已实现；双实线仍待完善，地图不是 GIS |
-| Function/Tool 主程序接口 | 已实现后台 JS/Flow/用户 JS Tool；不是权限沙箱，可取消 Worker，同步任务硬超时 10 秒 |
-| 官方工具建议 | 已实现；必须用户采纳，采纳对象与 JSON 存档成功分别反馈 |
-| Agent Graph、Agents、inline 共存 | 已实现循环/惰性条件/递归与根记忆事务，Tool 外部副作用不回滚 |
-| 聊天 SSE、过程与差异建议 | 本地模拟与浏览器验收；真实供应商/桌面交互另记结果 |
-| LLM/ComfyUI 桥梁 | 已实现接口；基础 LLM 过滤 extraBody 能力字段；真实供应商与 GPU 需服务验收 |
-| Skill/插件安装、章节自动化/归档 | 待实现 |
-| 远程 MCP/对外 MCP 服务、图片像素加工、完整 Comfy 布局导入 | 待实现 |
+| 世界编辑、JSON 自动存档、明确 MD 交换 | 已实现；不自动发现未知文件或推断 Schema |
+| 人物关系网、关系类型网、地图 | 已实现；双实线渲染仍待完善，地图不是 GIS |
+| JS/Flow、Python、用户 Tool | 已实现接口；脚本不是权限沙箱，Python/桌面联调独立验收 |
+| Agent Graph、Skill 包、会话管理、流式聊天 | 已实现；自主选工具/技能与长会话需真实供应商验收 |
+| 新 void Function 从通用图节点写世界 | 缺少 bindingPath 适配 |
+| ComfyUI API 图与取图 | 已实现桥；需要外部服务/GPU，不支持完整前端布局 |
+| 外部 Skill 下载安装、插件发现安装 | 待实现 |
+| 自动章节写作、插图归档、远程/对外 MCP、像素加工 | 待实现 |
 
-具体一次测试、构建、测量和替换状态只记录到 [修改日志](changelog/README.md)。
+维护文档前核对源码及示例，将当前规则更新到所属对象章节；实际命令和结果写 [日志](changelog/README.md)，不要在专题末尾追加日期补丁。
 
-## UI 样式验收
-
-/tests/ui-styles.html 是内存控件家族展示，支持主题、状态预览及减少动态效果；实际菜单、树、画布与拖放继续通过 /tests/tree-ui.html 验证。状态预览不代替真实输入回归。主题迁移及 Portal Token 测试纳入 npm test。维护规则见 [UI 样式指南](ui/styles.md)。
-
-/tests/instance-edit-ui.html 验证实例多选、位置粘贴、剪切删除、历史、标签配置和染色，不写真实世界。框选验收模式仅在夹具为鼠标事件提供 Shift 条件，用于缺少组合拖动接口时检查相同 Pointer Events 路径；它不代替真实键盘修饰键验收，也不加入产品 UI。tests/instanceEditing.test.ts 验证递归副本身份、排序落点及标签不写 Markdown。
-
-### 手动保存交互夹具
-
-`tests/manual-save-ui.html` 挂载实际 AppRoot，localStorage 使用独立内存实现，显示持久化次数和已存实例名，不读取或写入用户工作区。现用于验证 JSON 自动存档、切页内容保留、导出差异标记及只读 Markdown 预览；浏览器导入需选择文件，不用 Ctrl+R 将对象回退到 localStorage。绑定强制执行和模拟桌面读取的核心契约由 manualSave.test.ts 与 markdown.test.ts 验证。
-
+toolCategories 测试覆盖三种 Agent 的默认目录许可与隔离、用户取消选择保留、旧目录移除时内容提升、只读目录删除/移动保护、职能图标持久化、自建 write/ask 的执行前确认、文件提议恢复/冲突/无关变更保留、批量保存倒序回退。tests/tool-categories-ui.html 使用内存夹具检查目录图标、分组配置、文件保存/回退和提问回答，不读写用户实际文件或访问模型。

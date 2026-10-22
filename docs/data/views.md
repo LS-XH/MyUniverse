@@ -58,7 +58,7 @@ bindingText 为显示文字，可解析引用、派生来源、名称和正文�
 
 ## 文件对应
 
-创建视图只增加 World.nodes 与 World.views，不改 ClassDocument 的 Schema、实例或 Markdown。保存当前视图提交 world-index.json 和视图 JSON；树结构也随工作区 JSON 保存。规范化旧项目时将视图移到源文件下，保留 ID、文件名、布局和格式。地图变更父类时同步变更树中的源文件归属；拖动只允许视图在同一源文件下排序。
+创建视图只增加 World.nodes 与 World.views，不改 ClassDocument 的 Schema、实例或 Markdown。在视图配置页保存当前文件导出 world-index.json 和视图 JSON；关系网操作画布的当前文件指向源类正文；树结构也随工作区 JSON 保存。规范化旧项目时将视图移到源文件下，保留 ID、文件名、布局和格式。地图变更父类时同步变更树中的源文件归属；拖动只允许视图在同一源文件下排序。
 
 `World.views[view.id]` 与同 ID 的 TreeNode 对应，每份配置输出到 `<view-id>.view.json`。组织目录不改变文件物理位置；旧 World.graph/map 为兼容数据。详见 [JSON 文件职责](json-storage.md)。
 

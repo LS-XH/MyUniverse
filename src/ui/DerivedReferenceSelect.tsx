@@ -1,3 +1,4 @@
+import Select from './Select'
 import { classLink } from '../model/markdown'
 import { fieldFunctions, functionFile, functionLink, functionReferenceIdentity } from '../model/functions'
 import { World } from '../model/types'
@@ -13,5 +14,5 @@ export default function DerivedReferenceSelect({world,classId,entityId,value,onC
   }))
   if(!options.length)return null
   const selected=options.find(o=>functionReferenceIdentity(o.value)===functionReferenceIdentity(value))?.value||''
-  return <select className="derived-reference-select ui-field--derived ui-surface ui-field" aria-label="引用函数返回值" value={selected} onChange={e=>onChange(e.target.value||base)}><option value="">使用原值</option>{options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>
+  return <Select className="derived-reference-select ui-field--derived ui-surface ui-field" aria-label="引用函数返回值" value={selected} onChange={e=>onChange(e.target.value||base)}><option value="">使用原值</option>{options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</Select>
 }

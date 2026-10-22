@@ -21,7 +21,7 @@ function canonicalReference(value: string): string {
 }
 
 /** Types come from the schema; Markdown supplies entity names and property values. */
-export function parseDocumentMarkdown(markdown: string, previous: ClassDocument, world?: World, options: {mode?:'fill'|'replace';rejectUnknown?:boolean;enforceGeneratedReadOnly?:boolean;functionNames?:Record<string,string>} = {}): ClassDocument {
+export function parseDocumentMarkdown(markdown: string, previous: ClassDocument, world?: World, options: {mode?:'fill'|'replace';replaceContents?:boolean;appendOnly?:boolean;preserveFunctionOrigin?:boolean;rejectUnknown?:boolean;enforceGeneratedReadOnly?:boolean;functionNames?:Record<string,string>} = {}): ClassDocument {
   if(options.mode==='fill')return fillDocumentMarkdown(markdown,previous,world,options)
   const { root, lines } = headingTree(markdown)
   const resolvePlain=(value:string,target:FieldSchema,prior?:FieldValue,part:'key'|'value'='value')=>{

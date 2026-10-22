@@ -1,3 +1,4 @@
+import {isSystemFolder} from './toolRoles'
 import { PluginFolder, PluginSection, Workspace, uid } from './types'
 
 export const pluginSectionNames:Record<PluginSection,string>={skills:'技能',functions:'函数',tools:'工具'}
@@ -13,6 +14,6 @@ export function pluginFolderPath(workspace:Workspace,id:string|null):PluginFolde
   return path
 }
 export function removePluginFolder(workspace:Workspace,id:string):Workspace {
-  const folder=workspace.pluginFolders?.find(f=>f.id===id);if(!folder)return workspace
-  return {...workspace,tools:workspace.tools?.map(tool=>tool.folderId===id?{...tool,folderId:folder.parentId}:tool),pluginFolders:workspace.pluginFolders?.filter(f=>f.id!==id).map(f=>f.parentId===id?{...f,parentId:folder.parentId}:f),functions:workspace.functions?.map(fn=>fn.folderId===id?{...fn,folderId:folder.parentId}:fn)}
+  const folder=workspace.pluginFolders?.find(f=>f.id===id);if(!folder||isSystemFolder(id))return workspace
+  return {...workspace,skills:workspace.skills?.map(s=>s.folderId===id?{...s,folderId:folder.parentId}:s),tools:workspace.tools?.map(tool=>tool.folderId===id?{...tool,folderId:folder.parentId}:tool),pluginFolders:workspace.pluginFolders?.filter(f=>f.id!==id).map(f=>f.parentId===id?{...f,parentId:folder.parentId}:f),functions:workspace.functions?.map(fn=>fn.folderId===id?{...fn,folderId:folder.parentId}:fn)}
 }

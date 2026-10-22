@@ -1,3 +1,4 @@
+import {SYSTEM_DEFAULT_MODEL} from './models'
 import {AgentDefinition,WorkflowNode,WorkflowLink,uid} from './types'
 import {workflowNode} from './workflows'
 import {ContextMessage,typedVariableNode} from './workflowValues'
@@ -13,7 +14,7 @@ export function conversationAgent(modelId?:string,toolIds:string[]=[],history:Co
  const tools=typedVariableNode('Tools',undefined,40,360),agents=typedVariableNode('Agents',undefined,40,600)
  tools.settings={...tools.settings,name:'tools',variableId:toolsId};agents.settings={...agents.settings,name:'agents',variableId:agentsId}
  for(const n of [read,initial,final,bodyRead,save])n.settings={...n.settings,name:'history',variableId:historyId}
- llm.settings.modelId=modelId||''
+ llm.settings.modelId=modelId||SYSTEM_DEFAULT_MODEL
  const edge=(from:WorkflowNode,to:WorkflowNode,input:string,output='value'):WorkflowLink=>({id:uid(),from:from.id,to:to.id,input,output})
  const stop=loop.body!.nodes.find(n=>n.kind==='break')!,again=loop.body!.nodes.find(n=>n.kind==='continue')!
  stop.x=1740;stop.y=600;again.x=2080;again.y=600

@@ -1,0 +1,97 @@
+/* Shared modern control and floating surfaces; page classes only arrange them. */
+.ui-select {position:relative;display:inline-flex;min-width:0;max-width:100%;vertical-align:middle;}
+.ui-native-select {position:absolute!important;opacity:0!important;width:1px!important;height:1px!important;padding:0!important;pointer-events:none;clip-path:inset(50%);}
+.ui-select-trigger {display:flex;align-items:center;gap:10px;justify-content:space-between;width:100%;min-width:0;text-align:left;cursor:pointer;transition:background-color .18s,border-color .18s,box-shadow .18s,transform .12s;}
+.ui-select-trigger>span {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ui-select-trigger>svg {flex:none;transition:transform .18s;}
+.ui-select-trigger:hover {--ui-bg:var(--hover);--ui-border-color:color-mix(in srgb,var(--accent) 50%,var(--border));}
+.ui-select-trigger:active {transform:translateY(1px);}
+.ui-select-trigger[aria-expanded=true]>svg {transform:rotate(180deg);}
+.ui-select-trigger:focus-visible {outline:2px solid var(--accent);outline-offset:2px;}
+.ui-select-menu [role=option] {display:flex;align-items:center;gap:8px;width:100%;text-align:left;}
+.ui-select-menu [role=option]>span {flex:1;}
+.ui-select-menu [role=option].is-highlighted {--ui-bg:var(--hover);}
+.ui-select-menu [role=option][aria-selected=true] {--ui-bg:var(--active);}
+.ui-select-menu small {color:var(--muted);}
+.config-form .ui-select,.view-binding-controls .ui-select,.workflow-settings .ui-select,.graph-style-controls .ui-select,.attribute-filter-grid .ui-select {width:100%;}
+@media(prefers-reduced-motion:reduce){.ui-select-trigger,.ui-select-trigger>svg {transition:none;}}
+.chat-composer-rich {white-space:pre-wrap;overflow-wrap:anywhere;min-height:54px;max-height:220px;overflow:auto;outline:none;padding:4px 0;color:var(--text);font:inherit;line-height:1.8;}
+.chat-composer-rich:empty::before {content:attr(data-placeholder);color:var(--muted);pointer-events:none;}
+.chat-composer-chip {display:inline-flex;align-items:center;gap:6px;padding:1px 7px;margin:0 2px;vertical-align:baseline;border:1px solid var(--border);border-radius:7px;cursor:pointer;user-select:all;--ui-bg:var(--active);transition:background .16s,box-shadow .16s,transform .12s;}
+.chat-composer-chip:hover,.chat-composer-chip:focus {outline:1px solid var(--accent);box-shadow:0 2px 8px var(--ui-shadow-1);transform:translateY(-1px);}
+.chat-composer-chip:active {transform:translateY(1px);}
+.chat-page {position:relative;}
+.chat-usage-float {position:absolute;right:16px;bottom:16px;z-index:22;width:44px;height:44px;border:1px solid var(--border);border-radius:12px;background:var(--panel);box-shadow:0 6px 24px var(--ui-shadow-2);overflow:hidden;transition:width .28s cubic-bezier(.2,.8,.2,1),height .28s cubic-bezier(.2,.8,.2,1),border-radius .28s;}
+.chat-usage-float.is-open {width:min(440px,calc(100% - 32px));height:min(360px,calc(100% - 32px));border-radius:16px;}
+.chat-usage-toggle {position:absolute;left:0;top:0;width:44px;height:44px;z-index:2;}
+.chat-usage-panel {display:flex;flex-direction:column;gap:12px;height:100%;min-width:300px;padding:14px 16px 16px;opacity:0;transform:translate(12px,12px);transition:opacity .14s,transform .24s;pointer-events:none;}
+.chat-usage-panel>strong {padding-left:34px;}
+.chat-usage-float.is-open .chat-usage-panel {opacity:1;transform:none;pointer-events:auto;transition-delay:.08s;}
+.chat-usage-records {flex:1;overflow:auto;min-height:0;}
+.chat-usage-record {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-bottom:1px solid var(--border);font-size:12px;}
+.chat-usage-record small {grid-column:1/-1;color:var(--muted);}
+.chat-message-rail {position:absolute;left:6px;top:0;bottom:0;width:22px;z-index:6;display:flex;flex-direction:column;align-items:center;overflow:auto;scrollbar-width:none;gap:4px;}
+.chat-message-dot {display:grid;place-items:center;flex:none;width:18px;height:18px;padding:0;border:0;background:transparent;}
+.chat-message-dot::before {content:'';width:5px;height:5px;background:var(--muted);border-radius:50%;transition:background .16s,transform .16s;}
+.chat-message-dot.is-active::before,.chat-message-dot:hover::before {background:var(--accent);transform:translateX(2px);}
+.chat-page .message-column {padding-left:24px;}
+.tree-drop-placeholder[data-drop-mode=inside] {width:calc(100% - 20px);}
+@media(prefers-reduced-motion:reduce){.chat-usage-float,.chat-usage-panel,.chat-composer-chip,.chat-message-dot::before {transition:none!important;animation:none!important;}}
+
+/* One secondary toolbar skin; modifiers describe layout roles, never another surface. */
+.ui-page-toolbar {--ui-bg:transparent!important;background:transparent!important;border-bottom:0!important;box-shadow:none!important;gap:12px;}
+.ui-page-toolbar--editor,.ui-page-toolbar--management,.ui-page-toolbar--config {padding-block:14px;}
+.ui-page-toolbar--canvas {backdrop-filter:none!important;}
+.ui-page-toolbar h1 {font-size:20px;}
+.ui-page-toolbar .heading-actions {align-items:center;}
+.breadcrumbs {display:flex;align-items:center;min-width:0;overflow:auto;scrollbar-width:none;gap:2px;}
+.breadcrumb-part {flex:none;}
+.breadcrumb-button {--ui-bg:transparent;--ui-border-width:0;--ui-radius:var(--ui-radius-7);padding:6px 9px;min-height:30px;white-space:nowrap;}
+.breadcrumb-button[aria-current=page] {--ui-fg:var(--text);}
+/* Shared sliding layout: toolbar and canvas occupy the same flexible main column. */
+.workflow-workbench.flow-workbench {display:grid;grid-template-columns:minmax(0,1fr) 0px;grid-template-rows:auto minmax(0,1fr);transition:grid-template-columns .24s cubic-bezier(.2,.8,.2,1);}
+.workflow-workbench.flow-workbench:is(.library-open,.inspector-open) {grid-template-columns:minmax(0,1fr) min(340px,45%);}
+.workflow-workbench>.flow-toolbar {grid-column:1;grid-row:1;min-width:0;flex-wrap:wrap;}
+.workflow-workbench>.flow-editor-layout {display:contents;}
+.workflow-workbench .flow-editor-layout>.flow-canvas {grid-column:1;grid-row:2;width:auto;height:auto;min-height:0;}
+.workflow-workbench .flow-editor-layout>.workflow-dock {grid-column:2;grid-row:1/-1;width:100%;max-width:none;height:100%;min-height:0;}
+.workflow-workbench .workflow-dock.is-present {width:100%;}
+.workflow-workbench .workflow-dock .flow-library-title,.workflow-workbench .workflow-inspector-heading {min-height:56px;}
+@media(prefers-reduced-motion:reduce){.workflow-workbench.flow-workbench {transition:none;}}
+.workflow-workbench.flow-workbench {flex:1;min-height:0;background:var(--canvas);border:0;border-radius:0;}
+.workflow-workbench>.flow-toolbar {min-height:56px;padding:10px 16px;}
+.workflow-workbench.flow-workbench {margin:0;}
+.ui-page-toolbar--page {background:transparent;}
+
+/* Reuse the same neutral surface for all secondary bars; item skins remain explicit. */
+.ui-page-toolbar--page,.ui-page-toolbar--document {--ui-bg:transparent;}
+
+/* The toolbar arranges floating controls over the canvas; its empty area is inert. */
+.workflow-workbench>.flow-toolbar {z-index:4;align-self:start;pointer-events:none;height:auto;overflow:visible;padding-right:12px;}
+.workflow-workbench>.flow-toolbar>* {pointer-events:auto;}
+.workflow-workbench .flow-editor-layout>.flow-canvas {grid-row:1/-1;}
+.workflow-workbench>.flow-toolbar>.icon-button:last-child {margin-left:auto;}
+/* The open library owns the sole toggle at the same right edge. */
+.workflow-workbench .flow-library-title {padding-right:16px;}
+.chat-message-rail {pointer-events:none;}
+.chat-message-rail::before,.chat-message-rail::after {content:'';flex:1 0 0;}
+.chat-message-dot {pointer-events:auto;}
+/* A single morphing shell, with no second rounded button surface inside it. */
+.chat-usage-toggle.ui-button {--ui-bg:transparent!important;--ui-shadow:none!important;--ui-border-width:0;--ui-radius:0;transform:none!important;transition:color .16s;}
+.chat-usage-float:not(.is-open):hover {background:var(--hover);}
+.chat-usage-float:not(.is-open):active {box-shadow:0 2px 8px var(--ui-shadow-1);}
+/* Both the picker and inline module use this same reference control skin. */
+.ui-reference-trigger {display:inline-flex;align-items:center;gap:8px;width:max-content;max-width:100%;padding:8px 10px;min-height:36px;font:inherit;font-size:12px;line-height:1.4;--ui-bg:var(--input);--ui-fg:var(--text);--ui-border-width:1px;--ui-border-style:solid;--ui-border-color:var(--border);--ui-radius:var(--ui-radius-7);}
+.ui-reference-trigger>svg {flex:none;margin-left:auto;}
+.chat-composer-chip.ui-reference-trigger {margin:0 2px;vertical-align:middle;white-space:nowrap;user-select:all;cursor:pointer;transition:background .16s,border-color .16s,box-shadow .16s,transform .12s;}
+/* Text actions and tree labels always follow the theme's primary text token. */
+button,.ui-button,.ui-tree-row,.tree-main {--ui-fg:var(--text)!important;color:var(--text)!important;}
+button:is(.icon-button,.ui-button--icon),.ui-button--icon {--ui-fg:var(--muted)!important;color:var(--muted)!important;}
+
+/* Accent-filled actions keep the theme's contrasting accent text. */
+:is(.primary,.ui-button--primary,.ui-button--send,.ui-button--color-done) {--ui-fg:var(--accentText)!important;color:var(--accentText)!important;}
+:is(.ui-button--mini-add,.ui-button--schema-add) {--ui-fg:var(--accent)!important;color:var(--accent)!important;}
+:is(.round-add,.ui-button--add) {--ui-fg:var(--muted)!important;color:var(--muted)!important;}
+.chat-usage-toggle[hidden] {display:none;}
+.chat-usage-panel>strong {padding-left:0;padding-right:32px;}
+.chat-usage-close {position:absolute;right:8px;top:8px;z-index:2;}

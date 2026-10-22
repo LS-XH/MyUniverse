@@ -29,8 +29,8 @@ export async function executeBackgroundTask<K extends keyof BackgroundTasks>(kin
    if(!value||typeof value!=='object'||Array.isArray(value)||!Array.isArray((value as Workspace).worlds))throw new Error('工作区 JSON 存档结构无效，未覆盖原文件')
    result=normalizeWorkspace(value as Workspace);break
   }
-  case 'parse':{const v=input as BackgroundTasks['parse']['input'];result=parseDocumentMarkdown(v.text,v.doc,v.world,{...v.options,mode:'fill'});break}
-  case 'preview':{const v=input as BackgroundTasks['preview']['input'],source=documentMarkdown(v.doc),baseline=v.baselineDocument?documentMarkdown(v.baselineDocument):v.baseline;result={source,locations:markdownLocations(v.doc),levels:markdownHeadingLevels(source),rows:baseline===undefined?source.split('\n').map((text,i)=>({kind:'context',text,after:i+1})):lineDiff(baseline,source,true)};break}
+  case 'parse':{const v=input as BackgroundTasks['parse']['input'];result=parseDocumentMarkdown(v.text,v.doc,v.world,{replaceContents:true,...v.options,mode:'fill'});break}
+  case 'preview':{const v=input as BackgroundTasks['preview']['input'],source=documentMarkdown(v.doc),baseline=v.baselineDocument?documentMarkdown(v.baselineDocument):v.baseline;result={source,locations:markdownLocations(v.doc),levels:markdownHeadingLevels(source),rows:baseline===undefined?source.split('\n').map((text,i)=>({kind:'context',text,after:i+1})):lineDiff(baseline.replace(/\r\n?/g,'\n'),source,true)};break}
   case 'jobs':{const v=input as BackgroundTasks['jobs']['input'];result=functionJobs(v.workspace,true,v.scope);break}
   case 'job':{const v=input as BackgroundTasks['job']['input'];result=resolveFunctionJob(v.workspace,v.identity);break}
   case 'function':{

@@ -1,3 +1,4 @@
+import {usePageRef} from './PageSession'
 import {validateWorkflow} from '../model/workflows'
 import {isFlowGraph} from '../model/flow'
 import { useEffect, useRef, useState } from 'react'
@@ -5,7 +6,7 @@ import { EditGraph, graphFragment, pasteGraphFragment, removeGraphSelection } fr
 let clipboard:{kind:string;graph:EditGraph}|null=null
 export default function useGraphEditing<G extends EditGraph>(value:G,onChange:(next:G)=>void,kind:string) {
   const [selected,setSelected]=useState<string[]>([]),[selectedEdges,setSelectedEdges]=useState<string[]>([]),[revision,setRevision]=useState(0)
-  const past=useRef<G[]>([]),future=useRef<G[]>([]),transaction=useRef<G|null>(null),live=useRef({value,onChange,selected,selectedEdges});live.current={value,onChange,selected,selectedEdges}
+  const past=usePageRef<G[]>('graph:past:'+kind,()=>[]),future=usePageRef<G[]>('graph:future:'+kind,()=>[]),transaction=useRef<G|null>(null),live=useRef({value,onChange,selected,selectedEdges});live.current={value,onChange,selected,selectedEdges}
   const changed=()=>setRevision(n=>n+1)
   const commit=(next:G,force=false)=>{const current=live.current;if(!force&&JSON.stringify(next)===JSON.stringify(current.value))return;if(!transaction.current){past.current.push(structuredClone(current.value));if(past.current.length>100)past.current.shift()}future.current=[];live.current={...current,value:next};current.onChange(next);changed()}
   const begin=()=>{transaction.current=structuredClone(live.current.value)}
@@ -26,6 +27,6 @@ export default function useGraphEditing<G extends EditGraph>(value:G,onChange:(n
   const select=(id:string,additive=false)=>{setSelected(current=>additive?current.includes(id)?current.filter(item=>item!==id):[...current,id]:current.includes(id)?current:[id]);setSelectedEdges([])}
   const clear=()=>{setSelected([]);setSelectedEdges([])}
   const commands=useRef({copy,paste,cut,undo,redo,remove});commands.current={copy,paste,cut,undo,redo,remove}
-  useEffect(()=>{past.current=[];future.current=[];transaction.current=null;clear();changed()},[kind])
+  useEffect(()=>{transaction.current=null;clear();changed()},[kind])
   return {selected,setSelected,selectedEdges,setSelectedEdges,commit,begin,end,cancelTransaction,undo,redo,copy,paste,cut,remove,select,clear,canUndo:past.current.length>0,canRedo:future.current.length>0,commands,revision}
 }

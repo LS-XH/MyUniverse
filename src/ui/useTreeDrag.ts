@@ -1,66 +1,63 @@
-import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
-import { portalTheme } from './portalTheme'
-
-/** Preview stays in the DOM; only the final valid drop changes workspace data. */
+import {useEffect,useRef,type PointerEvent as ReactPointerEvent} from 'react'
+import {nearestTreeTarget} from '../model/treeDragHit'
+import {portalTheme} from './portalTheme'
+import {preserveDragAppearance} from './dragAppearance'
+/** Stable hit geometry and one insertion preview; horizontal indent expresses nesting. */
 export default function useTreeDrag(onMove:(source:string,target:string,inside:boolean,after:boolean)=>void){
-  const callback=useRef(onMove),cleanup=useRef<(()=>void)|null>(null);callback.current=onMove
-  useEffect(()=>()=>cleanup.current?.(),[])
-  return (event:ReactPointerEvent<HTMLElement>)=>{
-    if(event.button!==0||!(event.target as HTMLElement).closest('.tree-main'))return
-    const row=(event.target as HTMLElement).closest<HTMLElement>('[data-tree-id]');if(!row)return
-    const source=row.dataset.treeId!;if(source.startsWith('plugin:')&&source.endsWith(':root'))return
-    cleanup.current?.()
-    const unitFor=(row:HTMLElement)=>row.parentElement?.matches('.tree-node,.plugin-tree-node')?row.parentElement:row
-    const unit=unitFor(row),display=unit.style.display,bounds=row.getBoundingClientRect(),origin={x:event.clientX,y:event.clientY},offset={x:event.clientX-bounds.left,y:event.clientY-bounds.top}
-    let ghost:HTMLElement|null=null,target:HTMLElement|null=null,inside=false,after=false,active=false,frame=0,lastX=origin.x,lastY=origin.y
-    const placeholder=document.createElement('div');placeholder.className='tree-drop-placeholder ui-drag-preview--tree-placeholder ui-surface ui-drag-preview';placeholder.style.height=`${bounds.height}px`;placeholder.setAttribute('aria-hidden','true')
-    const region=event.currentTarget,reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const clearTarget=()=>{target?.classList.remove('tree-drop-inside');placeholder.remove()}
-    const animateLayout=(change:()=>void)=>{
-      const rows=Array.from(region.querySelectorAll<HTMLElement>('[data-tree-id]')),positions=rows.map(r=>r.getBoundingClientRect().top)
-      change()
-      if(!reduced)rows.forEach((r,i)=>{const delta=positions[i]-r.getBoundingClientRect().top;if(delta&&r.getClientRects().length){r.getAnimations().forEach(a=>a.cancel());r.animate([{transform:`translateY(${delta}px)`},{transform:'translateY(0)'}],{duration:180,easing:'ease-out'})}})
-    }
-    const mark=()=>{
-      if(placeholder.isConnected){const rect=placeholder.getBoundingClientRect();if(lastX>=rect.left&&lastX<=rect.right&&lastY>=rect.top&&lastY<=rect.bottom)return}
-      const candidate=document.elementFromPoint(lastX,lastY)?.closest<HTMLElement>('[data-tree-id]')||null
-      const from=source.split(':'),to=candidate?.dataset.treeId?.split(':')||[]
-      const worlds=from[0]==='world'&&from[2]==='root'&&to[0]==='world'&&to[2]==='root'
-      let next=candidate
-      if(!next||unit.contains(next)||from[0]!==to[0]||(!worlds&&from[1]!==to[1])||(from[0]==='world'&&from[2]==='root'&&!worlds))next=null
-      const rect=next?.getBoundingClientRect(),fraction=rect?(lastY-rect.top)/rect.height:0
-      const nextInside=!worlds&&next?.dataset.treeFolder==='true'&&fraction>.25&&fraction<.75,nextAfter=fraction>=.5
-      if(next&&!nextInside&&to.at(-1)==='root'&&!worlds)next=null
-      if(next===target&&nextInside===inside&&nextAfter===after)return
-      animateLayout(()=>{clearTarget();target=next;inside=!!nextInside;after=nextAfter
-        if(!target)return
-        if(inside)target.classList.add('tree-drop-inside')
-        else{const targetUnit=unitFor(target);placeholder.style.order=String(Number(targetUnit.style.order||0)+(after?.5:-.5));targetUnit.insertAdjacentElement(after?'afterend':'beforebegin',placeholder)}
-      })
-    }
-    const scroll=()=>{const container=row.closest<HTMLElement>('.projects-scroll,.sidebar');if(container&&active){const rect=container.getBoundingClientRect(),before=container.scrollTop;container.scrollTop+=lastY<rect.top+35?-7:lastY>rect.bottom-35?7:0;if(before!==container.scrollTop)mark();frame=requestAnimationFrame(scroll)}}
-    const move=(e:PointerEvent)=>{
-      if(e.pointerId!==event.pointerId)return
-      if(!active&&Math.hypot(e.clientX-origin.x,e.clientY-origin.y)<6)return
-      e.preventDefault();lastX=e.clientX;lastY=e.clientY
-      if(!active){active=true;ghost=row.cloneNode(true) as HTMLElement;ghost.classList.add('tree-drag-card','ui-drag-preview--tree','ui-surface','ui-drag-preview');ghost.removeAttribute('data-tree-id');ghost.setAttribute('aria-hidden','true');ghost.inert=true
-        // The clone leaves the sidebar, so preserve styles supplied by its ancestors.
-        const originals=[row,...Array.from(row.querySelectorAll<HTMLElement | SVGElement>('*'))]
-        const copies=[ghost,...Array.from(ghost.querySelectorAll<HTMLElement | SVGElement>('*'))]
-        const presentation=['display','align-items','justify-content','gap','padding','box-sizing','font-family','font-size','font-weight','line-height','letter-spacing','color','flex','flex-shrink','min-width','max-width','width','height','overflow','text-overflow','white-space','opacity']
-        originals.forEach((original,index)=>{const computed=getComputedStyle(original),copy=copies[index]
-          presentation.forEach(key=>copy.style.setProperty(key,computed.getPropertyValue(key)))
-          copy.style.pointerEvents='none'
-        })
-        for(const [key,value] of Object.entries(portalTheme(row)))ghost.style.setProperty(key,String(value))
-        Object.assign(ghost.style,{width:`${bounds.width}px`,minWidth:`${bounds.width}px`,maxWidth:`${bounds.width}px`,height:`${bounds.height}px`,margin:'0',border:'none',outline:'none',transform:'none'});document.body.append(ghost)
-        animateLayout(()=>{unit.style.display='none'});document.body.classList.add('tree-dragging');frame=requestAnimationFrame(scroll)
-      }
-      ghost!.style.left=`${lastX-offset.x}px`;ghost!.style.top=`${lastY-offset.y}px`;mark()
-    }
-    const stop=()=>{cancelAnimationFrame(frame);clearTarget();ghost?.remove();unit.style.display=display;document.body.classList.remove('tree-dragging');window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',cancel);window.removeEventListener('keydown',key);window.removeEventListener('blur',cancel);cleanup.current=null}
-    const cancel=()=>stop(),key=(e:KeyboardEvent)=>{if(e.key==='Escape')stop()}
-    const up=(e:PointerEvent)=>{if(e.pointerId!==event.pointerId)return;const destination=target?.dataset.treeId;stop();if(active){const suppress=(click:MouseEvent)=>{click.preventDefault();click.stopImmediatePropagation()};window.addEventListener('click',suppress,{capture:true,once:true});setTimeout(()=>window.removeEventListener('click',suppress,true),0);if(destination)callback.current(source,destination,inside,after)}}
-    window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',up);window.addEventListener('pointercancel',cancel);window.addEventListener('keydown',key);window.addEventListener('blur',cancel);cleanup.current=stop
+ const callback=useRef(onMove),cleanup=useRef<(()=>void)|null>(null);callback.current=onMove
+ useEffect(()=>()=>cleanup.current?.(),[])
+ return(event:ReactPointerEvent<HTMLElement>)=>{
+  if(event.button!==0||!(event.target as HTMLElement).closest('.tree-main'))return
+  const row=(event.target as HTMLElement).closest<HTMLElement>('[data-tree-id]');if(!row||row.dataset.treeReadonly==='true')return
+  const source=row.dataset.treeId!,parts=source.split(':');if((parts[0]==='plugin'||parts[0]==='model')&&parts.at(-1)==='root')return
+  cleanup.current?.()
+  const region=event.currentTarget,unitFor=(item:HTMLElement)=>item.parentElement?.matches('.tree-node,.plugin-tree-node')?item.parentElement:item
+  const unit=unitFor(row),display=unit.style.display,bounds=row.getBoundingClientRect(),start={x:event.clientX,y:event.clientY},scroller=row.closest<HTMLElement>('.projects-scroll,.organized-tree,.sidebar'),initialScroll=scroller?.scrollTop||0
+  const placeholder=document.createElement('div');placeholder.className='tree-drop-placeholder ui-drag-preview--tree-placeholder ui-surface ui-drag-preview';placeholder.style.height=`${bounds.height}px`;placeholder.setAttribute('aria-hidden','true')
+  const animations=new Map<HTMLElement,Animation>()
+  const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  let ghost:HTMLElement|null=null,active=false,target:HTMLElement|null=null,inside=false,after=false,x=start.x,y=start.y,frame=0
+  let rows:{element:HTMLElement;top:number;bottom:number;left:number}[]=[],originTop=0,originBottom=0
+  const compatible=(item:HTMLElement)=>{const to=item.dataset.treeId!.split(':'),root=parts[0]==='world'&&parts[2]==='root';return !unit.contains(item)&&parts[0]===to[0]&&(root?to[2]==='root':parts[1]===to[1])}
+  const animate=(change:()=>void)=>{
+   const elements=Array.from(region.querySelectorAll<HTMLElement>('[data-tree-id]')).filter(el=>el.getClientRects().length),before=elements.map(el=>el.getBoundingClientRect().top)
+   animations.forEach(animation=>animation.cancel());animations.clear()
+   change()
+   if(!reduced)elements.forEach((el,i)=>{const delta=before[i]-el.getBoundingClientRect().top;if(delta)animations.set(el,el.animate([{transform:`translateY(${delta}px)`},{transform:'none'}],{duration:180,easing:'ease-out'}))})
   }
+  const mark=()=>{
+   const rect=region.getBoundingClientRect(),inRegion=x>=rect.left&&x<=rect.right&&y>=rect.top&&y<=rect.bottom,scroll=(scroller?.scrollTop||0)-initialScroll
+   // Keep the last slot outside the tree, and restore the original slot when revisited.
+   if(!inRegion){target=null;return}
+   if(y+scroll>=originTop&&y+scroll<=originBottom){if(placeholder.nextSibling!==unit)animate(()=>{unit.before(placeholder);placeholder.style.marginLeft='0';placeholder.dataset.dropMode='origin'});target=null;inside=false;after=false;return}
+   const hit=nearestTreeTarget(rows,y+scroll)
+   const next=hit?.element||null,worldRoot=parts[0]==='world'&&parts[2]==='root',root=next?.dataset.treeId?.endsWith(':root')||next?.dataset.treeId===`world:${parts[1]}:root`
+   const nested=!!next&&!worldRoot&&next.dataset.treeFolder==='true'&&(root||x>=hit!.left+32),below=!!hit&&y+scroll>=(hit.top+hit.bottom)/2
+   const nextAfter=nested?false:below
+   if(next===target&&nested===inside&&nextAfter===after)return
+   if(!next)return
+   animate(()=>{target=next;inside=nested;after=nextAfter
+    const targetUnit=unitFor(next);placeholder.style.marginLeft=nested?'20px':'0';placeholder.dataset.dropMode=nested?'inside':below?'after':'before'
+    if(nested&&targetUnit!==next){const branch=Array.from(targetUnit.children).find(el=>el.matches('.tree-branch,.plugin-tree-branch,.plugin-tree-children,.ui-tree-branch'));if(branch)branch.prepend(placeholder);else targetUnit.append(placeholder)}else targetUnit.insertAdjacentElement(nested||below?'afterend':'beforebegin',placeholder)
+   })
+  }
+  const scroll=()=>{if(active&&scroller){const rect=scroller.getBoundingClientRect(),before=scroller.scrollTop;scroller.scrollTop+=y<rect.top+35?-7:y>rect.bottom-35?7:0;if(scroller.scrollTop!==before)mark()}if(active)frame=requestAnimationFrame(scroll)}
+  const move=(e:PointerEvent)=>{
+   if(e.pointerId!==event.pointerId)return
+   x=e.clientX;y=e.clientY;if(!active&&Math.hypot(x-start.x,y-start.y)<6)return;e.preventDefault()
+   if(!active){active=true;ghost=row.cloneNode(true) as HTMLElement;preserveDragAppearance(row,ghost);ghost.classList.add('tree-drag-card','ui-drag-preview--tree','ui-surface','ui-drag-preview');ghost.removeAttribute('data-tree-id');ghost.inert=true;ghost.setAttribute('aria-hidden','true');for(const [key,value] of Object.entries(portalTheme(row)))ghost.style.setProperty(key,String(value));Object.assign(ghost.style,{width:`${bounds.width}px`,height:`${bounds.height}px`,margin:'0',pointerEvents:'none'});document.body.append(ghost)
+    // Capture logical positions before lifting; previews must never feed back into hit testing.
+    rows=Array.from(region.querySelectorAll<HTMLElement>('[data-tree-id]')).filter(item=>compatible(item)&&item.getClientRects().length).map(element=>{const rect=element.getBoundingClientRect();return {element,top:rect.top,bottom:rect.bottom,left:rect.left}})
+    const unitBounds=unit.getBoundingClientRect(),unitStyle=getComputedStyle(unit);originTop=unitBounds.top;originBottom=unitBounds.bottom
+    placeholder.style.height=`${unitBounds.height}px`;placeholder.style.margin=unitStyle.margin;placeholder.dataset.dropMode='origin'
+    // Replace the source's footprint in one layout pass; never close and reopen the gap.
+    unit.before(placeholder);unit.style.display='none'
+    document.body.classList.add('tree-dragging');frame=requestAnimationFrame(scroll)
+   }
+   ghost!.style.left=`${x-(start.x-bounds.left)}px`;ghost!.style.top=`${y-(start.y-bounds.top)}px`;mark()
+  }
+  const stop=()=>{cancelAnimationFrame(frame);animations.forEach(animation=>animation.cancel());animations.clear();placeholder.remove();ghost?.remove();unit.style.display=display;document.body.classList.remove('tree-dragging');window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',cancel);window.removeEventListener('blur',cancel);window.removeEventListener('keydown',key);cleanup.current=null}
+  const cancel=()=>stop(),key=(e:KeyboardEvent)=>{if(e.key==='Escape')stop()},up=(e:PointerEvent)=>{if(e.pointerId!==event.pointerId)return;const destination=target?.dataset.treeId;stop();if(active){const suppress=(click:MouseEvent)=>{click.preventDefault();click.stopImmediatePropagation()};window.addEventListener('click',suppress,{capture:true,once:true});setTimeout(()=>window.removeEventListener('click',suppress,true),0);if(destination)callback.current(source,destination,inside,after)}}
+  window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',up);window.addEventListener('pointercancel',cancel);window.addEventListener('blur',cancel);window.addEventListener('keydown',key);cleanup.current=stop
+ }
 }

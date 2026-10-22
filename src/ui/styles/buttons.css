@@ -20,6 +20,13 @@ button:disabled {
   --ui-border-color: currentColor;
   --ui-radius: var(--ui-radius-12);
 }
+.icon-button,
+.ui-button--icon {
+  width: 29px;
+  height: 29px;
+  display: grid;
+  place-items: center;
+}
 .ui-button--icon {
   --ui-border-width: 0;
   --ui-border-style: none;
@@ -87,7 +94,7 @@ button:disabled {
   --ui-border-style: dashed;
   --ui-radius: var(--ui-radius-7);
 }
-.graph-tools button {
+.graph-tools button:not(.ui-button--icon) {
   --ui-border-width: 1px;
   --ui-border-style: solid;
   --ui-radius: var(--ui-radius-7);
@@ -277,7 +284,7 @@ button:disabled {
 .map-zoom button:hover {
   --ui-bg: var(--hover);
 }
-.graph-tools button {
+.graph-tools button:not(.ui-button--icon) {
   --ui-bg: var(--panel);
   --ui-border-color: var(--border);
   --ui-fg: var(--text);
@@ -285,7 +292,7 @@ button:disabled {
 .canvas-controls button {
   --ui-fg: var(--text);
 }
-.graph-tools button:hover,
+.graph-tools button:not(.ui-button--icon):hover,
 .canvas-controls button:hover {
   --ui-bg: var(--hover);
 }
@@ -532,6 +539,13 @@ button:disabled {
   transform: scale(.96);
 }
 .ui-button--topbar-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
   --ui-border-width: 0;
   --ui-border-style: none;
   --ui-border-color: currentColor;
@@ -543,6 +557,12 @@ button:disabled {
 .ui-button--topbar-icon:hover {
   --ui-bg: var(--hover);
   --ui-fg: var(--text);
+}
+.ui-button--topbar-icon[aria-pressed=true],
+.ui-button--topbar-icon[aria-expanded=true],
+.ui-button--topbar-icon.tool-active {
+  --ui-bg: var(--active);
+  --ui-fg: var(--accent);
 }
 .ui-button--topbar-icon.danger {
   --ui-fg: var(--danger);

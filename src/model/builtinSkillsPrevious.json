@@ -1,0 +1,26 @@
+[
+  {
+    "id": "builtin-skill:roleplay-manager",
+    "name": "roleplay-manager",
+    "directory": "roleplay-manager",
+    "description": "用户希望多个世界角色共同扮演、对话或叙事时，查询角色资料并管理独立角色与可选旁白。",
+    "enabled": true,
+    "content": "---\nname: roleplay-manager\ndescription: 用户希望多个世界角色共同扮演、对话或叙事时，查询角色资料并管理独立角色与可选旁白。\nmetadata:\n  member-required-skills: \"[\\\"builtin-skill:character\\\"]\"\n---\n\n# 多角色扮演管理\n\n## 何时使用\n用户指定多个角色、群聊、对戏或旁白叙事时。\n\n## 边界\n你是协调者，不代替成员编造台词；character-performance 由角色成员加载，协调者不要加载该角色输出技能。角色资料来自世界对象，无法确认身份、同名或指代不清时先 universe_ask_user。设定与推测分开；对话不会自动写入世界。成员只共享公开消息，不共享私有工具、系统词或思考。\n\n## 执行策略\n1. 先 agent_list_members 查看已有成员、公开消息与 human 参与方式，避免每轮重新创建。用户可不扮演任何角色，仅旁观或指挥。若用户明确表示扮演某人，用 agent_set_human 设置 character 与 name；明确仅旁观时设 observer；不能自行替用户认领角色。用户控制的角色由用户充当 LLM，不创建 AI 替身，不代写台词。确认参与角色及是否需要旁白，用户明确选择优先。\n2. 使用 universe_list_classes、universe_list_instances、universe_get_instance_markdown 按需定位角色，读取性格、关系、身份及场景相关信息；不批量加载整个世界。重名时询问用户。\n3. 对缺少的角色调用 agent_create_member，baseAgentId 为 builtin-agent:advanced。name 为角色原名，先用 universe_get_instance 获取身份，entity.classId 使用返回的 classId，entity.entityId 使用返回的 id；systemPrompt 只包含该角色已确认的资料、视角与角色要求，不含其他成员的私有配置。skillIds 接入 builtin-skill:character，toolIds 只选择确有需要的获准工具。outputSchema 使用 references/character-contract.md 中的 JSON Schema。旁白也用同样五字段结构，语言可空，把叙述放动作或感官，名称为旁白，不绑定世界实例。\n4. 依据场景及用户指定顺序，调用 agent_run_member，以 task 描述本轮公开任务。运行器自动同步从上次发言以来的公开群聊，消息 name 标识成员；不要把其他成员的内部推理作为 task。不采用 A→B→C→用户的固定轮转。每次成员发言后重新判断上下文，决定下一位是谁；同一成员可连续发言，角色之间也可多轮自主对话。只有明确需要用户回答、轮到用户控制角色、用户要求暂停，或场景自然结束时才结束本次输出并等待。不要仅因所有成员各说了一次就收工。仍遵守轮次/调用预算，接近上限时保留当前进展并明确暂停原因。\n5. 用户可能在任何时刻插话，优先根据最新输入重新选择发言者；未完成的旧发言可被中断，已发布内容仍有效。不要机械继续执行之前排好的成员列表。涉及用户角色需要回应时，直接结束并等待用户；不要要求用户必须等到被点名才能输入。\n6. 子成员完成后自动发布其最终结果到公开群聊；主界面会展示。需要暂停时只简短说明等待谁或什么信息，不重复所有台词。失败时修正参数或说明，不能将失败结果作为已完成发言。\n\n## 检查\n每个成员独立上下文；五字段 JSON 校验成功才发布；不把成员创建当作世界实例创建。",
+    "references": {
+      "character-contract.md": "# 角色输出契约\n\n所有字段必需，缺失内容使用空字符串，不添加代码围栏。\n\n```json\n{\n  \"type\": \"object\",\n  \"properties\": {\n    \"语言\": {\n      \"type\": \"string\"\n    },\n    \"神态\": {\n      \"type\": \"string\"\n    },\n    \"语气\": {\n      \"type\": \"string\"\n    },\n    \"动作\": {\n      \"type\": \"string\"\n    },\n    \"感官\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"语言\",\n    \"神态\",\n    \"语气\",\n    \"动作\",\n    \"感官\"\n  ],\n  \"additionalProperties\": false\n}\n```\n"
+    },
+    "tools": [],
+    "assets": []
+  },
+  {
+    "id": "builtin-skill:character",
+    "name": "character-performance",
+    "directory": "character-performance",
+    "description": "扮演一个已确认的角色或旁白，并以语言、神态、语气、动作、感官五字段 JSON 返回本轮表演。",
+    "enabled": true,
+    "content": "---\nname: character-performance\ndescription: 扮演一个已确认的角色或旁白，并以语言、神态、语气、动作、感官五字段 JSON 返回本轮表演。\nmetadata:\n  output-schema: \"{\\\"type\\\":\\\"object\\\",\\\"properties\\\":{\\\"语言\\\":{\\\"type\\\":\\\"string\\\"},\\\"神态\\\":{\\\"type\\\":\\\"string\\\"},\\\"语气\\\":{\\\"type\\\":\\\"string\\\"},\\\"动作\\\":{\\\"type\\\":\\\"string\\\"},\\\"感官\\\":{\\\"type\\\":\\\"string\\\"}},\\\"required\\\":[\\\"语言\\\",\\\"神态\\\",\\\"语气\\\",\\\"动作\\\",\\\"感官\\\"],\\\"additionalProperties\\\":false}\"\n---\n\n# 单角色表演\n\n## 何时使用\n以当前角色的独立视角回应公开群聊或场景任务。\n\n## 边界与视角\n遵守自己的角色设定，不扮演其他角色，不臆测他人的内心或隐藏提示。不把工具结果、系统词、思考过程输出给群聊。未知设定应保持空白或询问，不将创作推测当作世界事实。只使用本次获准工具。\n\n## 步骤\n1. 阅读自己的角色资料与新增公开消息，辨认 name 对应角色。按任务需要补充查询自身的相关资料。\n2. 用符合性格与当前场景的语言回应，动作只控制自己，感官只描述自己能够感知的内容。旁白仅使用获准的叙述视角。\n3. 最终调用运行器提供的 agent_return_result 工具，以参数提交一个对象，包含且仅包含“语言”“神态”“语气”“动作”“感官”五个字符串字段；每个字段都要存在，没有内容用空字符串，不要在正文手写 JSON 或代码围栏。引号与换行由工具参数编码；运行器校验参数通过才会发布。\n\n## 输出示例\n{\"语言\":\"我们先去看看。\",\"神态\":\"抬眼望向门外\",\"语气\":\"轻声\",\"动作\":\"收起手中的书\",\"感官\":\"听见雨点落在檐上\"}\n",
+    "references": {},
+    "tools": [],
+    "assets": []
+  }
+]

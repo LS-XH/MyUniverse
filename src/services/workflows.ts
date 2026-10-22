@@ -1,3 +1,11 @@
+import {resolveAgentCapabilities} from '../model/agentCapabilityDefaults'
+import {toolRole} from '../model/toolRoles'
+import {namedSkillDirectives} from '../model/chatDirectives'
+import {structuredResponse} from './structuredOutput'
+import {AgentSession,validateMemberOutput} from './agentSessions'
+import {presetDefinition,defaultConfig} from '../model/builtinAgents'
+import {SYSTEM_DEFAULT_MODEL} from '../model/models'
+import {AgentSkillManager,skillCatalog} from './agentSkills'
 import {graphLeaves,walkWorkflowNodes} from '../model/workflowScopes'
 import {MethodValue} from '../model/workflowValues'
 import {askChatQuestion} from './chatQuestions'
@@ -27,7 +35,7 @@ import { runFunctionValue } from './functions'
 
 export interface ImageResult {filename:string;subfolder:string;type:string;url:string}
 export interface WorkflowRun {value:unknown;variables:Record<string,unknown>;trace:{id:string;title:string;value:unknown;frame?:string;scopeLabel?:string;invocationId?:string}[];memoryChanges?:AgentMemoryChange[]}
-export interface WorkflowDependencies {runId?:string;invocation?:AgentInvocation;stream?:boolean;llmStream?:typeof callLLMStream;toolContext?:ToolCallContext;onEvent?:(event:WorkflowEvent)=>void|Promise<void>;llm?:typeof callLLM;llmMessage?:typeof callLLMMessage;imageAction?:typeof workflowImageAction;http?:typeof modelRequest;sd?:(workflow:SDWorkflow,input:string,workspace:Workspace,world?:World,signal?:AbortSignal)=>Promise<ImageResult[]>;function?:typeof runFunctionValue}
+export interface WorkflowDependencies {skillMessages?:LLMMessage[];forcedSkillIds?:string[];agentSession?:AgentSession;agentConfig?:import('../model/types').AgentConfig;memberHistory?:LLMMessage[];outputSchema?:Record<string,unknown>;defaultModelId?:string;chatHistory?:import('../model/workflowValues').ContextMessage[];skillLoader?:AgentSkillManager;runId?:string;invocation?:AgentInvocation;stream?:boolean;llmStream?:typeof callLLMStream;toolContext?:ToolCallContext;onEvent?:(event:WorkflowEvent)=>void|Promise<void>;llm?:typeof callLLM;llmMessage?:typeof callLLMMessage;imageAction?:typeof workflowImageAction;http?:typeof modelRequest;sd?:(workflow:SDWorkflow,input:string,workspace:Workspace,world?:World,signal?:AbortSignal)=>Promise<ImageResult[]>;function?:typeof runFunctionValue}
 export const workflowText=(value:unknown):string=>typeof value==='string'?value:value==null?'':JSON.stringify(value,null,2)
 function messages(value:unknown):LLMMessage[] {
   if(value==null||value==='')return []
@@ -42,26 +50,49 @@ function evaluator(graph:WorkflowGraph,input:unknown,workspace:Workspace,world:W
     const node='id'in event&&['node','loop','branch'].includes(event.kind)?graph.nodes.find(n=>n.id===event.id):undefined
     return emitAgentEvent(deps.invocation,deps.onEvent,{...event,...(node?{title:workflowNodeTitle(node)}:{}),...(scope?{scopeLabel:scope.label}:{})},scope?.frame)
   }
-  const request=async(model:import('../model/types').ModelConnection,conversation:LLMMessage[],requestSignal?:AbortSignal,tools?:ToolDefinition[]):Promise<LLMMessage>=>{
-    if(deps.invocation)spend(deps.invocation.runtime,'calls')
-    const id:string=crypto.randomUUID();await emit({kind:'model',id,state:'running'})
-    const response=deps.stream?await (deps.llmStream||callLLMStream)(model,conversation,requestSignal,tools,delta=>emit({kind:'model',id,state:'running',...delta})):await (deps.llmMessage||callLLMMessage)(model,conversation,requestSignal,tools)
-    if(!deps.stream&&response.content)await emit({kind:'model',id,state:'running',text:response.content})
-    await emit({kind:'model',id,state:'complete'});return response
+  const request=async(model:import('../model/types').ModelConnection,conversation:LLMMessage[],requestSignal?:AbortSignal,tools:ToolDefinition[]=[],inputs:LLMMessage[]=[]):Promise<LLMMessage>=>{
+    const schema=deps.outputSchema||deps.skillLoader?.outputSchema(),session=deps.agentConfig?.manageAgents?deps.agentSession:undefined
+    const context=[...(deps.skillMessages||[]),...conversation]
+    if(session)context.unshift({role:'system',content:'当前人类参与方式：'+JSON.stringify(session.state.human||{mode:'observer'})+'。人类可随时插话，优先处理新增输入；不得代替用户控制的角色发言。'})
+    for(;;){
+      if(session&&deps.skillLoader){const loaded=deps.skillLoader.force([...session.forcedSkillIds],workspace,tools);if(loaded.length){const messages=loaded.map(value=>({role:'system' as const,content:'用户强制指定的技能已加载：请遵循其适用规则完成本次任务，不得将它仅作为可选目录。'+JSON.stringify(value)}));inputs.push(...messages);context.push(...messages);const managed=deps.skillLoader.capabilities();tools=[...tools.filter(t=>!managed.some(m=>m.id===t.id)),...managed]}}
+      const queued=session?.takeInput()||[];inputs.push(...queued);context.push(...queued)
+      const revision=session?.revision
+      const perform=async(messages:LLMMessage[],available:ToolDefinition[],forced?:string):Promise<LLMMessage>=>{
+        if(deps.invocation)spend(deps.invocation.runtime,'calls')
+        const id=crypto.randomUUID(),controller=new AbortController(),abort=()=>controller.abort(),detach=session?.onInterject(abort)
+        requestSignal?.addEventListener('abort',abort,{once:true});if(requestSignal?.aborted)abort()
+        await emit({kind:'model',id,state:'running',modelName:model.name})
+        try{
+          const response=deps.stream?await (deps.llmStream||callLLMStream)(model,messages,controller.signal,available,delta=>emit({kind:'model',id,state:'running',...(schema?{reasoning:delta.reasoning}:delta)}),{toolChoice:forced,onUsage:usage=>emit({kind:'model',id,state:'running',usage})}):await (deps.llmMessage||callLLMMessage)(model,messages,controller.signal,available,{toolChoice:forced,onUsage:usage=>emit({kind:'model',id,state:'running',usage})})
+          if(!deps.stream&&!schema&&response.content)await emit({kind:'model',id,state:'running',text:response.content})
+          const discarded=!!session&&revision!==session.revision
+          await emit({kind:'model',id,state:'complete',...(discarded?{discarded:true}:{})})
+          if(discarded)throw new Error('用户插话，重新选择下一步')
+          return response
+        }catch(error){if(session&&revision!==session.revision)await emit({kind:'model',id,state:'complete',discarded:true});throw error}
+        finally{detach?.();requestSignal?.removeEventListener('abort',abort)}
+      }
+      try{return schema?await structuredResponse(schema,context,tools,perform):await perform(context,tools)}
+      catch(error){if(requestSignal?.aborted||!session||revision===session.revision)throw error}
+    }
   }
+  let activeCapabilities:ToolDefinition[]=[]
   const execute=async(tool:ToolDefinition,parameters:unknown,id:string=crypto.randomUUID()):Promise<unknown>=>{
-    if('agentId'in tool){const agent=workspace.agents?.find(a=>a.id===tool.agentId);if(!agent)throw new Error('Agent 已不存在');return (await runAgent(agent,parameters as Record<string,unknown>,workspace,world,signal,onProgress,deps)).value}
+    if('agentId'in tool){const agent=workspace.agents?.find(a=>a.id===tool.agentId);if(!agent)throw new Error('Agent 已不存在');return (await runAgent(agent,parameters as Record<string,unknown>,workspace,world,signal,onProgress,{...deps,outputSchema:undefined})).value}
     if(deps.invocation)spend(deps.invocation.runtime,'calls')
-    await emit({kind:'tool',id,name:toolName(tool),state:'running',parameters})
-    try{const result=await runTool(tool,parameters,world,signal,deps.http||modelRequest,{...deps.toolContext,...(deps.stream&&deps.onEvent?{askUser:(question:string,options:string[])=>askChatQuestion(question,options,signal,value=>emit({kind:'question',...value}))}:{}),onProposal:proposalId=>emit({kind:'proposal',id:proposalId})});await emit({kind:'tool',id,name:toolName(tool),state:'complete',result});return result}
-    catch(error){await emit({kind:'tool',id,name:toolName(tool),state:signal?.aborted?'error':'error',error:String(error)});throw error}
+    await emit({kind:'tool',id,name:toolName(tool),toolRole:toolRole(tool),title:tool.name,state:'running',parameters})
+    try{if(deps.agentConfig?.manageAgents&&deps.agentSession?.hasInput)throw new Error('用户已插话，请先读取新输入，再决定是否执行下一步')
+    const result=deps.agentConfig?.manageAgents&&deps.agentSession?.handles(tool)?await deps.agentSession.execute(tool,parameters,deps.agentConfig,workspace,world,async (definition,task,history)=>{const session=deps.agentSession!,revision=session.revision,controller=new AbortController(),abort=()=>controller.abort(),detach=session.onInterject(abort);signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();try{const output=await runAgent(definition,task,workspace,world,controller.signal,onProgress,{...deps,memberHistory:history,outputSchema:session.state.participants.find(m=>'session-member:'+m.id===definition.id)?.outputSchema});if(controller.signal.aborted)throw new Error('本次发言已中断');return {value:output.value,history:(output.variables.history as {value:{items:LLMMessage[]}}).value.items.filter(m=>m.role!=='system')}}catch(error){if(revision!==session.revision)throw new Error('用户已插话，本次未完成的发言已中断；请先处理最新输入');throw error}finally{detach();signal?.removeEventListener('abort',abort)}}):deps.skillLoader?.handles(tool)?deps.skillLoader.execute(tool,parameters,activeCapabilities):await runTool(tool,parameters,world,signal,deps.http||modelRequest,{...deps.toolContext,...(deps.stream&&deps.onEvent?{askUser:(question:string,options:string[])=>askChatQuestion(question,options,signal,value=>emit({kind:'question',...value}))}:{}),onProposal:proposalId=>emit({kind:'proposal',id:proposalId})});await emit({kind:'tool',id,name:toolName(tool),toolRole:toolRole(tool),title:tool.name,state:'complete',result});return result}
+    catch(error){await emit({kind:'tool',id,name:toolName(tool),toolRole:toolRole(tool),title:tool.name,state:signal?.aborted?'error':'error',error:String(error)});throw error}
   }
   const capabilities=async(node:WorkflowNode,defaultIds?:string[],defaultAgentIds:string[]=[])=>{
     const supplied=await read(node,'tools'),agents=await read(node,'agents')
     const tools=supplied===undefined?(defaultIds||[]).map(id=>{const t=registeredTools(workspace).find(t=>t.id===id);if(!t||!t.enabled)throw new Error('Tool 不存在或已停用: '+id);return t}):resolveWorkflowTools(supplied,workspace)
-    const all=[...tools,...agentCapabilities(agents===undefined&&defaultAgentIds.length?{type:'Agents',version:1,agentIds:defaultAgentIds}:agents,workspace)]
+    const dynamic=[...(deps.skillLoader?.capabilities()||[]),...(deps.agentConfig?.manageAgents?deps.agentSession?.capabilities(workspace)||[]:[])],managed=[...registeredTools(workspace).filter(t=>deps.agentConfig?.toolFolderIds?.includes(t.folderId||'')&&!dynamic.some(d=>d.id===t.id)),...dynamic],baseTools=tools.filter(t=>!managed.some(m=>m.id===t.id))
+    const all=[...baseTools,...managed,...agentCapabilities(agents===undefined&&defaultAgentIds.length?{type:'Agents',version:1,agentIds:defaultAgentIds}:agents,workspace)]
     if(new Set(all.map(toolName)).size!==all.length)throw new Error('Tool / Agent 调用名称重复')
-    return all
+    activeCapabilities=all;return all
   }
   const check=()=>{if(signal?.aborted)throw new DOMException('运行已取消','AbortError')}
   const read=async(node:WorkflowNode,name:string):Promise<unknown>=>{
@@ -119,17 +150,17 @@ function evaluator(graph:WorkflowGraph,input:unknown,workspace:Workspace,world:W
           break
         }
         case 'condition':{const selected=strictValue('Boolean',await read(node,'condition')) as boolean;await emit({kind:'branch',id:node.id,selected});const chosen=await read(node,selected?'trueValue':'falseValue');value=controlType(node)==='ANY'?chosen:strictValue(controlType(node) as VariableType,chosen);break}
-        case 'agent':{const supplied=await read(node,'agents'),agents=supplied===undefined?workspace.agents?.filter(a=>a.id===setting.agentId)||[]:resolveWorkflowAgents(supplied,workspace);if(agents.length!==1)throw new Error('调用 Agent 需要且只能接入一个 Agent');const result=await runAgent(agents[0],JSON.parse(strictValue('String',await read(node,'input')) as string),workspace,world,signal,onProgress,deps);value=workflowText(result.value);break}
+        case 'agent':{const supplied=await read(node,'agents'),agents=supplied===undefined?workspace.agents?.filter(a=>a.id===setting.agentId)||[]:resolveWorkflowAgents(supplied,workspace);if(agents.length!==1)throw new Error('调用 Agent 需要且只能接入一个 Agent');const result=await runAgent(agents[0],JSON.parse(strictValue('String',await read(node,'input')) as string),workspace,world,signal,onProgress,{...deps,outputSchema:undefined});value=workflowText(result.value);break}
 
         case 'llmBasic':{
-          const model=workspace.models?.find(m=>m.id===setting.modelId);if(!model)throw new Error('请选择 LLM 模型')
+          const model=workspace.models?.find(m=>m.id===(setting.modelId===SYSTEM_DEFAULT_MODEL?deps.defaultModelId:setting.modelId));if(!model)throw new Error(setting.modelId===SYSTEM_DEFAULT_MODEL?'请在聊天框选择本次使用的模型（测试时需指定默认模型）':'请选择 LLM 模型')
           const source=validateMessages(await read(node,'messages'));if(source.fragment)throw new Error('工具结果片段必须先合并进完整上下文')
           const answered=new Set(source.items.filter(m=>m.role==='tool').map(m=>m.tool_call_id))
           if(source.items.flatMap(m=>m.tool_calls||[]).some(c=>!answered.has(c.id)))throw new Error('请先执行 ToolCalls 并合并工具返回')
           if(!source.items.length)throw new Error('Messages 不能为空')
           const tools=await capabilities(node)
-          const response=await request(model,source.items,signal,tools)
-          value=validateMessages({type:'Messages',version:1,items:[response]});break
+          const injected:LLMMessage[]=[],response=await request(model,source.items,signal,tools,injected)
+          value=validateMessages({type:'Messages',version:1,items:[...injected,response]});break
         }
         case 'toolCalls':{
           const source=validateMessages(await read(node,'messages')),tools=await capabilities(node)
@@ -137,7 +168,7 @@ function evaluator(graph:WorkflowGraph,input:unknown,workspace:Workspace,world:W
           const answered=new Set(source.items.filter(m=>m.role==='tool').map(m=>m.tool_call_id)),results:LLMMessage[]=[]
           for(const call of source.items.flatMap(m=>m.tool_calls||[]).filter(c=>!answered.has(c.id))){
             check();let content:string
-            try{const tool=tools.find(t=>toolName(t)===call.function.name);if(!tool)throw new Error('Tool 未接入：'+call.function.name);content=toolResultText(await execute(tool,JSON.parse(call.function.arguments),call.id))}
+            try{const available=await capabilities(node);const tool=available.find(t=>toolName(t)===call.function.name);if(!tool)throw new Error('Tool 未接入：'+call.function.name);content=toolResultText(await execute(tool,JSON.parse(call.function.arguments),call.id))}
             catch(error){check();if(isAgentLimit(error))throw error;content=JSON.stringify({isError:true,error:error instanceof Error?error.message:String(error)})}
             results.push({role:'tool',content,tool_call_id:call.id})
           }
@@ -180,12 +211,12 @@ function evaluator(graph:WorkflowGraph,input:unknown,workspace:Workspace,world:W
           value=[...messages(await read(node,'history')),...(workflowText(await read(node,'prompt'))?[{role:'user',content:workflowText(await read(node,'prompt'))}]:[]),{role:'assistant',content:workflowText(await read(node,'reply'))}].slice(-limit);break
         }
         case 'llm':{
-          const model=workspace.models?.find(model=>model.id===setting.modelId);if(!model)throw new Error('请选择 LLM 模型')
+          const model=workspace.models?.find(model=>model.id===(setting.modelId===SYSTEM_DEFAULT_MODEL?deps.defaultModelId:setting.modelId));if(!model)throw new Error(setting.modelId===SYSTEM_DEFAULT_MODEL?'请在聊天框选择本次使用的模型（测试时需指定默认模型）':'请选择 LLM 模型')
           const context=messages(await read(node,'context')),prompt=workflowText(await read(node,'prompt'))
           const conversation:LLMMessage[]=[...(setting.systemPrompt?[{role:'system' as const,content:setting.systemPrompt}]:[]),...context,...(prompt?[{role:'user' as const,content:prompt}]:[])]
           if(!conversation.length)throw new Error('LLM 输入为空')
-          const tools=await capabilities(node,setting.toolIds?JSON.parse(setting.toolIds):model.toolIds||[],model.agentIds||[])
-          const response=deps.llm?{message:{role:'assistant' as const,content:await deps.llm(model,conversation,signal)},messages:[] as LLMMessage[]}:await callLLMWithTools(model,conversation,workspace,world,signal,request,[],deps.toolContext,tools,execute);value=response.message.content||'';outputs.set(node.id,{messages:validateMessages({type:'Messages',version:1,items:response.messages.length?response.messages:[response.message]})});break
+          const tools=await capabilities(node,setting.toolIds?JSON.parse(setting.toolIds):[],setting.agentIds?JSON.parse(setting.agentIds):[])
+          const response=deps.llm?{message:{role:'assistant' as const,content:await deps.llm(model,conversation,signal)},messages:[] as LLMMessage[]}:await callLLMWithTools(model,conversation,workspace,world,signal,(m,c,s,t)=>request(m,c,s,t),[],deps.toolContext,tools,execute);value=response.message.content||'';outputs.set(node.id,{messages:validateMessages({type:'Messages',version:1,items:response.messages.length?response.messages:[response.message]})});break
         }
         case 'sd':{const sd=workspace.sdWorkflows?.find(item=>item.id===setting.workflowId);if(!sd)throw new Error('请选择 SD 工作流');value=await (deps.sd||runSDWorkflow)(sd,workflowText(await read(node,'prompt')),workspace,world,signal);break}
         case 'function':{
@@ -238,26 +269,43 @@ function evaluator(graph:WorkflowGraph,input:unknown,workspace:Workspace,world:W
 export async function runAgent(agent:AgentDefinition,input:string|Record<string,unknown>,workspace:Workspace,world?:World,signal?:AbortSignal,onProgress?:(message:string)=>void,deps:WorkflowDependencies={}):Promise<WorkflowRun> {
   if(signal?.aborted)throw new DOMException('运行已取消','AbortError')
   if(agent.enabled===false)throw new Error('Agent 已停用')
+  const inputContext=deps.memberHistory?structuredClone(deps.memberHistory):undefined
+  const forcedSkillIds=!deps.invocation?[...new Set([...(deps.forcedSkillIds||[]),...namedSkillDirectives(agent.config?.systemPrompt||'',workspace.skills).flatMap(ref=>ref.kind==='skill'?[ref.id]:[])])]:[]
+  if(forcedSkillIds.length){agent={...agent,config:{...defaultConfig(true),...agent.config,skillIds:[...new Set([...(agent.config?.skillIds||[]),...forcedSkillIds])],startupSkillIds:[...new Set([...(agent.config?.startupSkillIds||[]),...forcedSkillIds])]}}}
+  agent=resolveAgentCapabilities(agent,workspace)
+  agent=presetDefinition(agent,deps.memberHistory||(!deps.invocation?deps.chatHistory:undefined))
+  const advanced=agent.preset==='advanced'||agent.preset==='roleplay'||!!agent.config?.skillIds.length||forcedSkillIds.length>0
+  deps={...deps,skillMessages:undefined,forcedSkillIds:undefined,agentConfig:agent.config,memberHistory:undefined,agentSession:deps.agentSession||(agent.config?.manageAgents?new AgentSession():undefined)}
+  const selectedSkills=advanced?(agent.config?.skillIds||[]).map(id=>{const skill=workspace.skills?.find(s=>s.id===id&&s.enabled);if(!skill||skill.diskError)throw new Error('Skill 不存在、已停用或格式无效：'+id);return skill}):[]
+  deps={...deps,skillLoader:advanced?new AgentSkillManager(selectedSkills,workspace,agent.config?.toolFolderIds===undefined||agent.config.toolFolderIds.includes('builtin-folder:skills')||forcedSkillIds.length>0):undefined}
+  const skillMessages:LLMMessage[]=[]
+  if(advanced&&!agent.preset)skillMessages.push({role:'system',content:skillCatalog(selectedSkills)})
+  if(advanced&&agent.preset){const stored=agent.variables.history as {value:{items:LLMMessage[]}};const system=stored.value.items.find(m=>m.role==='system');if(system)system.content=(system.content||'')+'\n\n'+skillCatalog(selectedSkills);else stored.value.items.unshift({role:'system',content:skillCatalog(selectedSkills)})}
+  if(advanced&&agent.config?.startupSkillIds?.length){const items=agent.preset?(agent.variables.history as {value:{items:LLMMessage[]}}).value.items:skillMessages;for(const id of agent.config.startupSkillIds){const loaded=deps.skillLoader!.force([id],workspace,[...registeredTools(workspace).filter(t=>agent.config!.toolIds.includes(t.id)),...deps.skillLoader!.capabilities(),...(agent.config.manageAgents?deps.agentSession!.capabilities(workspace):[])])[0];items.unshift({role:'system',content:'已强制加载启动技能（当前调用有效，请遵循其规则）：'+JSON.stringify(loaded)})}}
+  deps={...deps,skillMessages:agent.preset?undefined:skillMessages}
   const parameters=agentParameters(agent,input),parent=deps.invocation,runtime=parent?.runtime||newAgentRuntime(agent)
+  if(!parent&&agent.config?.manageAgents&&typeof parameters.input==='string')deps.agentSession!.addUser(parameters.input)
   if(!parent&&deps.runId)runtime.runId=deps.runId
   if(parent)spend(runtime,'calls')
   const invocation:AgentInvocation={runtime,id:crypto.randomUUID(),parentId:parent?.id,agentId:agent.id,depth:(parent?.depth||0)+1}
   if(invocation.depth>runtime.limits.depth)throw new AgentLimitError('Agent 调用深度超过上限')
   const checkpoint=new Map(runtime.staged),scope=world?.id||'global',key=agent.id+':'+scope
   const emit=(event:WorkflowEvent)=>emitAgentEvent(invocation,deps.onEvent,event)
-  await emit({kind:'agent',id:invocation.id,name:agent.name,state:'running',parameters})
+  await emit({kind:'agent',id:invocation.id,name:agent.name,state:'running',parameters,...(inputContext?{inputContext}:{})})
   try{
     const original=agent;agent=migrateWorkflowTypes(agent);validateWorkflow(agent.graph)
     const returns=agent.graph.nodes.filter(node=>node.kind==='return');if(returns.length!==1)throw new Error('Agent 必须有且只有一个返回卡片')
     const declarations=new Map<string,string>();for(const n of [...walkWorkflowNodes(agent.graph),...poolEntries(agent.variables).filter(e=>e.type==='Method').flatMap(e=>walkWorkflowNodes((e.value as MethodValue).graph))].filter(node=>node.kind==='variable')){const previous=declarations.get(n.settings.name);if(previous&&previous!==n.settings.variableType)throw new Error('变量 '+n.settings.name+' 存在不同类型的声明');declarations.set(n.settings.name,n.settings.variableType)}
-    const previous=runtime.staged.get(key),variables=structuredClone(ensureGraphVariables(agent.graph,{...agent.variables,...(previous?.variables||agent.memory?.[scope])})),trace:WorkflowRun['trace']=[]
+    const previous=runtime.staged.get(key),variables=structuredClone(ensureGraphVariables(agent.graph,{...agent.variables,...(agent.preset?{}:previous?.variables||agent.memory?.[scope])})),trace:WorkflowRun['trace']=[]
     for(const entry of poolEntries(agent.variables).filter(e=>e.type==='Method'))variables[entry.name]=structuredClone(agent.variables[entry.name])
     for(const entry of poolEntries(variables).filter(e=>e.type==='Method'))validateWorkflow((strictValue('Method',entry.value) as MethodValue).graph)
     await emit({kind:'variables',values:variables})
     const engine=evaluator(agent.graph,parameters,workspace,world,variables,signal,trace,{...deps,invocation},onProgress),value=(await engine.finish()).value
+    if(agent.preset&&(variables.history as {value:{items:LLMMessage[]}}).value.items.at(-1)?.role==='tool')throw new AgentLimitError('本次对话已达到配置的交流轮数，已保留完成的发言；可发送消息继续或调整轮数')
     toolResultText(value)
+    validateMemberOutput(value,deps.outputSchema||deps.skillLoader?.outputSchema())
     if(signal?.aborted)throw new DOMException('运行已取消','AbortError')
-    if(workspace.agents?.some(a=>a.id===original.id))runtime.staged.set(key,{agentId:agent.id,scope,base:previous?.base??structuredClone(original.memory?.[scope]),definition:previous?.definition||agentDefinitionSignature(original),variables:structuredClone(variables)})
+    if(!agent.preset&&workspace.agents?.some(a=>a.id===original.id))runtime.staged.set(key,{agentId:agent.id,scope,base:previous?.base??structuredClone(original.memory?.[scope]),definition:previous?.definition||agentDefinitionSignature(original),variables:structuredClone(variables)})
     await emit({kind:'agent',id:invocation.id,name:agent.name,state:'complete',result:value})
     return {value,variables,trace,memoryChanges:parent?undefined:[...runtime.staged.values()]}
   }catch(error){runtime.staged=checkpoint;await emit({kind:'agent',id:invocation.id,name:agent.name,state:signal?.aborted?'cancelled':'error',error:String(error)});throw error}

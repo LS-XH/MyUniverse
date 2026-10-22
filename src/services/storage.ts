@@ -1,3 +1,5 @@
+import {runtimeSkills,upgradeRuntimeSkills} from '../model/runtimeSkills'
+import {builtinSkills,upgradeBuiltinSkills,NARRATOR_SKILL} from '../model/builtinSkills'
 import {invoke,isTauri} from '@tauri-apps/api/core'
 import type {ClassDocument,Workspace,Entity} from '../model/types'
 import type {CreationFile} from '../model/manualSave'
@@ -5,14 +7,26 @@ import {mergeThreeWay,sameData,retainReferences} from '../model/merge'
 import {decodeInterfaceFile} from '../model/interfaceViews'
 import {background,yieldToUI} from './background'
 import {appLog,logOperation} from './runtimeLog'
+import {loadSkillPackages,persistSkillPackages,workspaceArchive} from './skillStorage'
 
 const KEY='myuniverse-workspace-v1'
 let queue:Promise<unknown>=Promise.resolve()
 let archive:Workspace|null=null,exported:Workspace|null=null
+const exportedText=new Map<string,string>()
+/** Read the actual export file; never substitute the workspace JSON as its baseline. */
+export async function readDocumentMarkdown(worldId:string,fileName:string):Promise<string|null>{
+ if(!isTauri())return exportedText.get(JSON.stringify([worldId,fileName]))??null
+ const result=await invoke<Record<string,Record<string,string|null>>>('read_document_files',{requests:{[worldId]:[fileName]}})
+ return result[worldId]?.[fileName]??null
+}
 function serialize<T>(action:()=>Promise<T>):Promise<T>{const task=queue.catch(()=>undefined).then(action);queue=task;return task}
 async function readArchive(fallback:Workspace):Promise<Workspace>{
  const raw=isTauri()?await invoke<Workspace|string>('load_workspace'):localStorage.getItem(KEY)||fallback
- return background('normalize',raw)
+ const workspace=await background('normalize',raw)
+ const skills=await loadSkillPackages([...(workspace.skills||[]),...((workspace.systemSkillVersion||0)<4?runtimeSkills():[]),...(workspace.systemSkillVersion?((workspace.systemSkillVersion<3)?builtinSkills().filter(s=>s.id===NARRATOR_SKILL):[]):builtinSkills())]),upgraded=(workspace.systemSkillVersion||0)<6?upgradeBuiltinSkills(skills):skills
+ const current=upgradeRuntimeSkills(upgraded,workspace.systemSkillVersion||0)
+ if(current.some((s,i)=>s!==skills[i]))await persistSkillPackages(current)
+ return {...workspace,systemSkillVersion:6,skills:current}
 }
 /** JSON is authoritative. Startup never imports external Markdown, schema or view exports. */
 export async function loadWorkspace():Promise<Workspace>{return logOperation('工作区','加载 JSON 存档',async()=>{archive=await readArchive({worlds:[],activeWorldId:null});exported=archive;return archive})}
@@ -20,7 +34,8 @@ export async function loadWorkspace():Promise<Workspace>{return logOperation('�
 export function checkpointWorkspace(workspace:Workspace):Promise<Workspace>{
  return serialize(async()=>{
   if(workspace===archive)return workspace
-  const text=await background('stringify',{...workspace,archiveVersion:2})
+  await persistSkillPackages(workspace.skills||[])
+  const text=await background('stringify',{...workspaceArchive(workspace),archiveVersion:2})
   if(isTauri())await invoke('checkpoint_workspace',{text});else localStorage.setItem(KEY,text)
   archive=workspace;appLog.info('JSON 存档','自动存档完成');return workspace
  })
@@ -29,8 +44,11 @@ export function checkpointWorkspace(workspace:Workspace):Promise<Workspace>{
 export function saveWorkspace(workspace:Workspace,_replacementKeys?:string[],scope?:CreationFile|'preferences'):Promise<Workspace>{
  return logOperation('导出',scope==='preferences'?'导出配置':scope?'导出当前文件':'导出全部文件',()=>serialize(async()=>{
   const files=await background('export',{workspace,scope})
-  if(isTauri())await invoke('export_workspace',{workspace:scope&&scope!=='preferences'?{...workspace,functions:undefined}:workspace,files})
-  else if(!archive){localStorage.setItem(KEY,await background('stringify',{...workspace,archiveVersion:2}));archive=workspace}
+  if(!scope||scope==='preferences')await persistSkillPackages(workspace.skills||[])
+  const exportedWorkspace=workspaceArchive(workspace)
+  if(isTauri())await invoke('export_workspace',{workspace:scope&&scope!=='preferences'?{...exportedWorkspace,functions:undefined}:exportedWorkspace,files})
+  else if(!archive){localStorage.setItem(KEY,await background('stringify',{...exportedWorkspace,archiveVersion:2}));archive=workspace}
+  for(const [worldId,documents] of Object.entries(files))for(const [name,text] of Object.entries(documents))exportedText.set(JSON.stringify([worldId,name]),text)
   exported=workspace;return workspace
  }))
 }
@@ -42,7 +60,7 @@ export function applySyncResult(submitted:Workspace,current:Workspace,result:Wor
  const next=mergeThreeWay(submitted,current,result).value;return sameData(current,next)?current:next
 }
 export interface ImportProgress {worldId:string;docId:string;before:ClassDocument;document:ClassDocument;entity?:Entity;beforeEntity?:Entity;final?:boolean;completed:number;total:number}
-export interface ImportOptions {signal?:AbortSignal;onProgress?:(progress:ImportProgress)=>void|Promise<void>}
+export interface ImportOptions {preserveFunctionOrigin?:boolean;signal?:AbortSignal;onProgress?:(progress:ImportProgress)=>void|Promise<void>}
 /** Commit only the newly parsed instance; do not repeatedly merge the whole document. */
 export function applyImportProgress(current:ClassDocument,progress:ImportProgress):ClassDocument{
  const {before,document}=progress
@@ -59,7 +77,8 @@ export function applyImportProgress(current:ClassDocument,progress:ImportProgres
   const wanted=new Set(document.entities.map(e=>e.id)),old=new Map(before.entities.map(e=>[e.id,e])),latest=new Map(current.entities.map(e=>[e.id,e]))
   for(const e of current.entities)if(!wanted.has(e.id)&&old.has(e.id)&&!sameData(e,old.get(e.id)))throw new Error('导入将删除已编辑实例，已保留当前内容')
   const entities=[...document.entities.flatMap(e=>latest.has(e.id)?[latest.get(e.id)!]:[]),...current.entities.filter(e=>!wanted.has(e.id)&&!old.has(e.id))]
-  return {...current,name:document.name,entities}
+  const ids=new Set(entities.map(e=>e.id))
+  return {...current,name:document.name,entities,...(current.entityLabels?{entityLabels:Object.fromEntries(Object.entries(current.entityLabels).filter(([id])=>ids.has(id)))}:{})}
  }
  return current
 }
@@ -83,7 +102,7 @@ async function importCreationFile(workspace:Workspace,scope:CreationFile,options
   const world=workspace.worlds.find(w=>w.id===scope.worldId);if(!world)throw new Error('项目不存在')
   if(!isTauri())throw new Error('浏览器模式请通过“导入 MD”选择文件；刷新不再从 JSON 回退对象')
   const docs=scope.kind==='document'?world.documents.filter(d=>d.id===scope.id):scope.kind==='world'?world.documents:[]
-  const views=scope.kind==='view'?[world.views?.[scope.id]].filter((v):v is NonNullable<typeof v>=>!!v):scope.kind==='world'?Object.values(world.views||{}):[]
+  const views=options.preserveFunctionOrigin?[]:scope.kind==='view'?[world.views?.[scope.id]].filter((v):v is NonNullable<typeof v>=>!!v):scope.kind==='world'?Object.values(world.views||{}):[]
   if(scope.kind==='document'&&!docs.length)throw new Error('对象文件不存在')
   const names=[...docs.map(d=>d.fileName),...views.map(v=>v.fileName)]
   const snapshots=await invoke<Record<string,Record<string,string|null>>>('read_document_files',{requests:{[world.id]:names}})
@@ -91,7 +110,7 @@ async function importCreationFile(workspace:Workspace,scope:CreationFile,options
   for(const before of docs){
    const text=snapshots[world.id]?.[before.fileName];if(text==null)throw new Error(`${before.fileName}：导入文件不存在，请先导出或选择 Markdown 文件`)
    let parsed:ClassDocument
-   try{parsed=await background('parse',{text,doc:before,world,options:{enforceGeneratedReadOnly:false,functionNames:Object.fromEntries((workspace.functions||[]).map(f=>[f.id,f.name]))}},options.signal)}catch(error){throw new Error(`${before.fileName}：${String(error)}。未导入无效内容。`)}
+   try{parsed=await background('parse',{text,doc:before,world,options:{preserveFunctionOrigin:options.preserveFunctionOrigin,enforceGeneratedReadOnly:false,functionNames:Object.fromEntries((workspace.functions||[]).map(f=>[f.id,f.name]))}},options.signal)}catch(error){throw new Error(`${before.fileName}：${String(error)}。未导入无效内容。`)}
    await publishImportedDocument(before,parsed,world.id,options)
    result={...result,worlds:result.worlds.map(w=>w.id===world.id?{...w,documents:w.documents.map(d=>d.id===before.id?parsed:d)}:w)}
   }

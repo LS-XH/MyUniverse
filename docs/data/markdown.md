@@ -30,18 +30,21 @@ Content 内的标题通过转义与代码围栏规则保留，不当作新的对
 
 函数生成的成员使用与普通成员相同的标题、正文和子标题，不输出任何函数名注释、来源索引、函数链接或执行元数据。对象卡片仍显示“函数名 →”；`functionOrigin`、`functionRuns`、绑定和成员 ID 均保存在 JSON 中。
 
-相同 Markdown 无法凭空恢复函数所有权。已有 JSON 可保留相同值的来源；导入到没有这些记录的实例时，所有填入值都属于用户内容。旧注释和来源索引兼容输入，但填入导入不信任这些标记来创建所有权。
+相同 Markdown 无法凭空恢复函数所有权。所有本次导入命中的值均属于用户内容；即使值相同，也清除既有函数来源与执行记录。未导入的分支保持原样。旧注释和来源索引兼容输入，但填入导入不信任这些标记来创建所有权。
 
-## 按配置填入 JSON
+## 刷新、导入与填入 JSON
 
-刷新及“导入 MD”使用当前 JSON 的属性配置，后台校验后逐实例填入，不读取外部 schema.json 来修改结构。刷新在导入成功后继续重新计算绑定函数；选择文件的“导入 MD”仅填入，不执行函数。
+三个入口均依照当前 JSON 属性配置解析，后台校验后逐实例提交，不反推或覆盖 Schema，不执行函数。
 
-- 未出现在 Markdown 中的实例、成员和子分支保留；导入不承担删除操作。
-- 实例按名称匹配。新的实例名创建新实例，旧实例不会因文件缺失或改名而删除；重命名和删除在对象编辑器中完成。
-- 可重复成员优先匹配相同结构与值，提前保留匹配 ID；剩余修改按相同 Schema、键和原出现顺序匹配，无法复用的项追加。保留 JSON 中已有顺序。
-- 值未变化时保留原 ID、函数来源及执行记录；新增或改动的值作为用户内容，不继承旧函数来源。手动改写后的内容不会在解绑时按旧来源删除。
-- 缺失的固定成员保留原值；显式写出空标题/空正文可以清空该成员。新实例补齐声明中必要的固定空成员。
-- 相同值的填入本身不触发函数执行；刷新完成导入后会显式重新计算，也可单独使用“重新计算函数”。
+| 入口 | 内容处理 | 函数来源 |
+| --- | --- | --- |
+| 刷新 | 读取当前对应 MD，替换目标类内容 | 根据原 JSON 匹配的稳定成员保留函数来源，内容修改后仍视为原函数成员 |
+| 导入 MD | 选择 MD，替换目标类内容 | 清除导入成员的函数来源与执行记录 |
+| 填入 MD | 选择 MD，仅追加新实例、重复成员与对象子项，不改旧值 | 新增成员无来源，旧成员不变 |
+
+替换时实例与重复成员的数量和顺序依照 MD；缺失实例和重复成员删除，缺失固定成员恢复空值及必要结构。成员匹配优先保留相同结构和值的身份，再按 Schema、键及原出现顺序匹配，避免重复成员借用错误 ID。填入不覆盖既有固定值，相同内容不重复添加。只有一级标题的有效空文档可通过刷新/导入清空实例；全部属性均不匹配配置时拒绝覆盖。
+
+函数来源只存 JSON；MD 中的旧注释不建立来源。“重新计算函数”独立使用 JSON 执行计算，不读取 MD。
 
 Class 键和值依据 Schema.classId 在目标类内解析实例名，使用完整世界目录；同名文字在其他类中不会影响该位置的类型。支持本次文档内新实例的前向/相互引用。找不到目标或存在同名歧义时明确报错，不猜测引用。跨文件新增目标应先导入目标类。
 
@@ -51,8 +54,8 @@ Class 键和值依据 Schema.classId 在目标类内解析实例名，使用完�
 
 ## 转换入口
 
-[`documentMarkdown`、`entityMarkdown`、`fieldMarkdown`、`exportFiles`](../../src/model/markdown.ts) 负责纯文本展示；[`fillDocumentMarkdown`](../../src/model/markdownImport.ts) 负责填入 JSON；[`markdownSyntax`](../../src/model/markdownSyntax.ts) 共用标题、围栏与转义规则。Worker 的 parse 任务采用填入入口。
+[`documentMarkdown`、`entityMarkdown`、`fieldMarkdown`、`exportFiles`](../../src/model/markdown.ts) 负责纯文本展示；[`fillDocumentMarkdown`](../../src/model/markdownImport.ts) 负责填入 JSON；[`markdownSyntax`](../../src/model/markdownSyntax.ts) 共用标题、围栏与转义规则。Worker 的 parse 默认使用替换入口；刷新设置 `preserveFunctionOrigin:true`，填入设置 `replaceContents:false, appendOnly:true`。
 
-[`parseDocumentMarkdown`](../../src/model/markdownParser.ts) 的严格替换模式供脚本事务校验和修改建议使用，继续检查生成成员只读和未知结构边界；显式 `mode: 'fill'` 使用填入规则。它不代表刷新时删除缺失对象的行为。
+[`parseDocumentMarkdown`](../../src/model/markdownParser.ts) 的严格替换模式供脚本事务校验和修改建议使用，继续检查生成成员只读和未知结构边界；显式 `mode: 'fill'` 使用填入规则。刷新调用填入解析器的替换模式，并保留原 JSON 的函数来源。
 
 正文与身份验证见 tests/plainMarkdown.test.ts、tests/markdown.test.ts；具体交付记录见 [日志](../changelog/README.md)。

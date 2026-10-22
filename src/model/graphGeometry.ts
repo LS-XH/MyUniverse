@@ -1,6 +1,10 @@
 export const GRAPH_NODE_WIDTH = 210
 export const GRAPH_NODE_HEIGHT = 88
 export type Point = { x: number; y: number }
+/** Top-left world position that places a card at the unobscured viewport center. */
+export function viewportNodePosition(pan:Point,scale:number,width:number,height:number,coveredRight=0):Point{
+ return {x:(Math.max(0,width-coveredRight)/2-pan.x)/scale-GRAPH_NODE_WIDTH/2,y:(height/2-pan.y)/scale-GRAPH_NODE_HEIGHT/2}
+}
 export const GRAPH_MIN_SCALE = .08
 export const GRAPH_MAX_SCALE = 3
 export function relationGeometry(a:Point,b:Point,width:number,border:number) {
@@ -59,4 +63,28 @@ export function personalGraphLayout(center:string,ids:string[]) {
   const positions:Record<string,Point>={[center]:{x:-GRAPH_NODE_WIDTH/2,y:-GRAPH_NODE_HEIGHT/2}}
   neighbors.forEach((id,i)=>{const angle=-Math.PI/2+i*2*Math.PI/neighbors.length;positions[id]={x:Math.cos(angle)*radius-GRAPH_NODE_WIDTH/2,y:Math.sin(angle)*radius-GRAPH_NODE_HEIGHT/2}})
   return positions
+}
+
+/** Undirected shortest-hop layers. Cycles, parallel edges and incoming links share one card. */
+export function personalGraphLayers(center:string,edges:ReadonlyArray<{source:string;target:string}>,depth:number):string[][] {
+ const adjacency=new Map<string,Set<string>>()
+ for(const {source,target} of edges){if(!adjacency.has(source))adjacency.set(source,new Set());if(!adjacency.has(target))adjacency.set(target,new Set());adjacency.get(source)!.add(target);adjacency.get(target)!.add(source)}
+ const layers=[[center]],seen=new Set([center]),limit=Math.max(1,Math.min(5,Math.trunc(depth)||1))
+ for(let level=1;level<=limit;level++){
+  const next:string[]=[]
+  for(const parent of layers[level-1])for(const id of [...(adjacency.get(parent)||[])].sort())if(!seen.has(id)){seen.add(id);next.push(id)}
+  if(!next.length)break
+  layers.push(next)
+ }
+ return layers
+}
+/** Separate concentric rings preserve hop distance without modifying saved full-view positions. */
+export function layeredPersonalGraphLayout(layers:string[][]):Record<string,Point>{
+ const positions:Record<string,Point>={};let radius=0
+ layers.forEach((ids,level)=>{
+  if(level===0){for(const id of ids)positions[id]={x:-GRAPH_NODE_WIDTH/2,y:-GRAPH_NODE_HEIGHT/2};return}
+  radius=Math.max(radius+300,ids.length*260/(2*Math.PI))
+  ids.forEach((id,index)=>{const angle=-Math.PI/2+index*2*Math.PI/ids.length;positions[id]={x:Math.cos(angle)*radius-GRAPH_NODE_WIDTH/2,y:Math.sin(angle)*radius-GRAPH_NODE_HEIGHT/2}})
+ })
+ return positions
 }

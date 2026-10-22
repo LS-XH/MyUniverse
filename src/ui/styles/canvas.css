@@ -53,7 +53,8 @@
   --ui-border-color: var(--accent);
   --ui-radius: var(--ui-radius-7);
   --ui-bg: var(--active);
-  animation: tree-gap var(--ui-duration-160) ease-out;
+  /* The persistent slot retains its full height while rows move around it. */
+  animation: none;
 }
 @media (prefers-reduced-motion:reduce) {
   .ui-drag-preview--tree-placeholder {
@@ -275,3 +276,12 @@
 .workflow-scope-navigation {display:flex;align-items:center;gap:4px;max-width:38%;overflow-x:auto;min-width:0}
 .workflow-scope-navigation button {flex-shrink:0}
 
+
+.sort-ghost.sort-group-ghost { overflow: visible; }
+.sort-group-ghost[data-drag-count]:not([data-drag-count="1"])::after { content: attr(data-drag-count) ' 个实例'; position: absolute; top: -12px; right: 10px; border-radius: 12px; padding: 3px 9px; background: var(--accent); color: var(--accent-text,#fff); font-size: 12px; }
+.sort-group-placeholder { --ui-border-width: 0px; --ui-bg: transparent; }
+.sort-placeholder-slot { flex: none; box-sizing: border-box; border: 1px dashed var(--accent); border-radius: var(--ui-radius-10); background: color-mix(in srgb,var(--active) 35%,transparent); }
+
+.graph-depth-control{display:flex;align-items:center;gap:8px;flex-shrink:0;font-size:12px;white-space:nowrap}.graph-depth-control input{width:96px;accent-color:var(--accent,#7c6de8)}.graph-depth-control output{min-width:24px}.graph-edge.is-selected text{font-weight:700}.graph-top:has(.graph-depth-control){flex-wrap:wrap}.graph-top:has(.graph-depth-control) .graph-tools{margin-left:auto}
+
+.graph-top:has(.graph-depth-control){height:auto;min-height:54px;gap:12px;row-gap:8px;padding-top:8px;padding-bottom:8px}.graph-depth-ring{position:absolute;border:1px dashed color-mix(in srgb,var(--accent,#7c6de8) 50%,transparent);border-radius:50%;pointer-events:none}.graph-depth-ring span{position:absolute;left:50%;bottom:0;padding:4px 8px;color:var(--text-muted,#8994ac);font-size:13px;white-space:nowrap}

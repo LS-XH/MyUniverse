@@ -34,7 +34,7 @@ Method 是第八种变量类型，封装 `{type:'Method',version:1,graph}`，gra
 
 ## 副作用与记忆提交
 
-变量节点和输出绑定只写当前调用的工作副本；方法返回新值不会自动保存。工作变量由初始定义与当前 worldId/global 的 memory 合成；根 Agent 成功后统一调用 commitAgentMemory，校验所有子调用记忆基线与定义，失败或取消丢弃暂存记忆。Tool 世界写入按每次脚本事务提交内存，网络与图片输出不随整图失败回滚。详见 [Agent 执行模型](models-and-agents.md#agent-的执行模型)。
+变量节点和输出绑定只写当前调用的工作副本；方法返回新值不会自动保存。工作变量由初始定义与当前 worldId/global 的 memory 合成；根 Agent 成功后统一调用 commitAgentMemory，校验所有子调用记忆基线与定义，失败或取消丢弃暂存记忆。Tool 世界写入按每次脚本事务提交内存，网络与图片输出不随整图失败回滚。详见 [Agent 执行模型](agents.md#agent-的执行模型)。
 
 ## 观察与取消
 

@@ -35,7 +35,7 @@ InstanceLabel 为 `{id,name,color}`，ClassDocument.labels 保存有序定义，
 | 类型 | 语义 | 内容表示 |
 | --- | --- | --- |
 | Object | 固定 Schema 下的递归成员集合；可包含重复声明 | children，不是随意 JSON 属性 |
-| Class | 当前世界内某类实例引用，classId 约束目标类 | Markdown 实例链接 |
+| Class | 当前世界内某类实例引用，classId 约束目标类 | JSON 内部保存实例链接，Markdown 展示纯名称 |
 | Data | 日期，保留既有类型名 | YYYYMMDD 文本 |
 | Text | 短文本，可嵌入引用 | 字符串 |
 | Content | 长正文，可嵌入引用 | 字符串，允许 Markdown |
@@ -51,7 +51,7 @@ InstanceLabel 为 `{id,name,color}`，ClassDocument.labels 保存有序定义，
 - Text：实例可编辑文本键；placeholder 保存提示，不将提示当真实 Key。
 - Class：指向指定类实例的键，可用于“事件人物”等引用列表。
 
-类结构保存在对应 schema.json；实例填写按结构同步。Object 子结构不是任意增删 JSON，新增与重复项由 Schema 的 repeatable 和 children 决定。引用输入和提示文本属于 UI 表达，详见 [页面 UI](../ui/pages.md)。
+类结构随 ClassDocument.schema 存入 workspace.json，显式导出另写对应 schema.json；实例填写按结构同步。Object 子结构不是任意增删 JSON，新增与重复项由 Schema 的 repeatable 和 children 决定。引用输入和提示文本属于 UI 表达，详见 [页面 UI](../ui/pages.md)。
 
 ## 三种类型体系
 
@@ -78,23 +78,9 @@ TypedValue 使用世界 ValueType：Object 的 members 为数组并保留重复�
 
 functionOrigin 与 functionRuns 只保存在工作区 JSON，不将内部索引或过程导出到正文。无来源标记的填入与身份匹配见 [Markdown 生成成员](markdown.md#function-生成成员与来源元数据)，所有权清理按函数 ID 与绑定成员 ID 配对，见 [绑定生命周期](../features/functions.md#显示来源和绑定生命周期)。
 
-## 应用配置对象
+## 应用配置与投影
 
-### Function 与 Tool 注册
-
-FunctionScript 保存 id/name、language、code、folderId、flow、apiVersion、executionMode。新建项为 apiVersion=2、executionMode=void；可选 returnType 仅用于旧独立返回接口兼容，不是当前绑定函数的返回声明。ToolDefinition 保存执行方式、自由参数 Schema、描述、annotations、代码或 HTTP 请求配置；官方定义来自程序，不由 Workspace 覆盖。
-
-### 模型与 Agent
-
-ModelConnection 保存 URL、模型标识、密钥和可选参数/toolIds/agentIds，以及只用于聊天直连的 chatSystemPrompt。SDWorkflow 保存连接和 WorkflowGraph；AgentDefinition 保存图、初始变量、按 worldId/global 分隔的 memory，以及 enabled/callName/description/inputSchema/limits。图定义和运行观察状态分别管理。
-
-### 主题与插件组织
-
-Theme 保存语义颜色，预设 builtin 为只读。PluginFolder 按 section 维护 parentId；sidebarTreeOrder 维护插件文件夹与项的混合顺序，旧工作区可缺省。
-
-### 投影配置
-
-InterfaceView 的 parentClassId 指定数据源类，bindings 指定显示来源；地图可配置，人物关系网固定为 people 并由程序推导路径。graph/map 保存布局与样式。完整投影结构由 [视图数据](views.md) 负责。
+FunctionScript、ToolDefinition、ModelConnection、AgentDefinition、虚拟目录与迁移标志统一见 [模型与插件配置](integrations.md)。SkillDefinition 是独立包的内存目录，文件格式见 [Skill 包](skills.md)。InterfaceView 的绑定与布局见 [视图数据](views.md)。
 
 ## 默认模板
 
@@ -110,8 +96,8 @@ InterfaceView 的 parentClassId 指定数据源类，bindings 指定显示来源
 
 默认导航包含世界观（势力、地点、地图）、人物（人物、人物关系网、关系类型）、事件（事件类）、章节、插图和聊天。旧模板通过兼容与规范化补全视图，不以迁移为理由移动用户磁盘文件。
 
+默认模板同时创建人物关系网和关系类型网；旧世界首次规范化安装关系类型网，World.relationGraphInstalled 标记完成，后续删除不自动恢复。
+
 ## 生命周期
 
-JSON 启动加载 → 对象编辑/脚本事务 → 自动 JSON 存档；保存键显式导出 Markdown，刷新键显式导入 Markdown。Agent 工作变量、无效源码草稿和页面会话分别维护，不代替持久对象。完整读写规则见 [草稿、保存与刷新](../features/persistence.md)。聊天对象见 [聊天数据](chat.md)，视图对象见 [视图数据](views.md)。
-
-默认模板同时创建人物关系网和关系类型网；旧世界首次规范化安装关系类型网，World.relationGraphInstalled 标记完成，后续删除不自动恢复。
+JSON 启动加载 → 对象编辑/脚本事务 → 自动 JSON 存档；保存键显式导出 Markdown，导入 MD 按配置填入普通值，刷新键读取当前 MD 更新 JSON 并保留原有函数来源。Agent 工作变量、无效源码草稿和页面会话分别维护，不代替持久对象。完整读写规则见 [草稿、保存与刷新](../features/persistence.md)。聊天对象见 [聊天数据](chat.md)，视图对象见 [视图数据](views.md)。

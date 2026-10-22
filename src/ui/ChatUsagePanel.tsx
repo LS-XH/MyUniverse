@@ -1,0 +1,8 @@
+import {useRef,useState} from 'react'
+import {Activity,X} from 'lucide-react'
+import {WorkflowEvent} from '../services/workflowExecution'
+import ChatUsage from './ChatUsage'
+export default function ChatUsagePanel({events}:{events:WorkflowEvent[]}){
+ const toggle=useRef<HTMLButtonElement>(null),[open,setOpen]=useState(false),rows=events.filter((e):e is Extract<WorkflowEvent,{kind:'model'}>=>e.kind==='model')
+ return <aside className={`chat-usage-float ${open?'is-open':''}`}><button ref={toggle} hidden={open} type="button" className="icon-button ui-button--icon ui-surface ui-button chat-usage-toggle" aria-label="展开用量记录" aria-expanded={open} aria-controls="chat-usage-records" title="Token 与费用记录" onClick={()=>setOpen(true)}><Activity size={18}/></button><div className="chat-usage-panel" id="chat-usage-records" aria-hidden={!open} inert={!open}><strong>用量记录</strong>{open&&<button autoFocus type="button" className="icon-button ui-button--icon ui-surface ui-button chat-usage-close" aria-label="关闭用量记录" title="关闭用量记录" onClick={()=>{setOpen(false);requestAnimationFrame(()=>toggle.current?.focus())}}><X size={18}/></button>}<div className="chat-usage-records">{rows.map((row,i)=><div className="chat-usage-record" key={`${row.runId||''}:${row.invocationId||''}:${row.id}:${i}`}><span>{i+1}. {row.usage?.modelName||row.modelName||'模型请求'}</span><span>{row.usage?`${row.usage.total.toLocaleString()} tokens`:(row.state==='running'?'请求中…':'未返回用量')}</span>{row.usage&&<small>输入 {row.usage.input} · 命中 {row.usage.cached} · 输出 {row.usage.output}{row.usage.cost===undefined?' · 价格未配置':` · ${row.usage.currency} ${row.usage.cost.toFixed(6)}`}</small>}</div>)}{!rows.length&&<p className="muted">模型请求完成后在这里逐条记录。</p>}</div><ChatUsage context events={events}/></div></aside>
+}

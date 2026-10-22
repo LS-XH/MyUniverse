@@ -1,5 +1,5 @@
 import {ClassDocument,Entity,FieldSchema,FieldValue,InterfaceKind,InterfaceView,ViewBinding,World,uid} from './types'
-import {entityMarkdown,fieldMarkdown} from './markdown'
+import {classLink,entityMarkdown,fieldMarkdown} from './markdown'
 import {referenceBase,resolveFunctionReference} from './functions'
 import {originalFields} from './functionAppend'
 export const currentBinding=(source:ViewBinding['source']='name',path:string[]=[],mode:ViewBinding['mode']='content',part:ViewBinding['part']='value'):ViewBinding=>({scope:'current',source,path,mode,part})
@@ -85,11 +85,23 @@ export function personGraphView(world:World,view:InterfaceView):InterfaceView {
  const relation=label&&relationPath(label,[label.id])
  return {...view,name:view.name==='关系网'?'人物关系网':view.name,parentClassId:'people',bindings:{title:currentBinding(),avatar:currentBinding(),subtitle:currentBinding('member',membership&&rank?[membership.id,rank.id]:[]),domain:currentBinding('member',membership&&domain?[membership.id,domain.id]:[]),domainLabel:currentBinding(),edges:currentBinding('member',relationships&&item?[relationships.id,item.id]:[]),target:currentBinding('member',[],'content','key'),edgeLabel:currentBinding('member',relation?.path||[],'content',relation?.part||'value')}}
 }
-/** Edit/delete only the selected relation value; retain siblings and relationship stories. */
+/** Removing the last relation value also removes its now-empty person entry. */
 export function patchGraphEdge(world:World,edge:ProjectedGraphEdge,next:FieldValue|null):World{
  if(edge.readOnly)return world
  const id=edge.relationField?.id||edge.field.id
- return {...world,documents:world.documents.map(doc=>doc.id===edge.sourceClassId?{...doc,entities:doc.entities.map(entity=>entity.id===edge.source.id?{...entity,fields:patchFieldTree(entity.fields,id,next)}:entity)}:doc)}
+ return {...world,documents:world.documents.map(doc=>doc.id===edge.sourceClassId?{...doc,entities:doc.entities.map(entity=>{
+  if(entity.id!==edge.source.id||inheritedOrigin(entity.fields,id)!==false)return entity
+  let fields=patchFieldTree(entity.fields,id,next)
+  if(!next&&edge.relationField){
+   const find=(items:FieldValue[],target:string):FieldValue|undefined=>{for(const item of items){if(item.id===target)return item;const found=find(item.children,target);if(found)return found}}
+   const row=find(entity.fields,edge.field.id)
+   const pathTo=(items:FieldValue[]):string[]|undefined=>{for(const item of items){if(item.id===id)return [item.schemaId];const path=pathTo(item.children);if(path)return [item.schemaId,...path]}}
+   const path=row&&pathTo(row.children),updated=find(fields,edge.field.id)
+   // Inspect the current data, including labels hidden by filters or Functions.
+   if(path&&updated&&!fieldsAtPath(updated.children,path).length)fields=patchFieldTree(fields,row!.id,null)
+  }
+  return {...entity,fields}
+ })}:doc)}
 }
 /** New people connections start with one empty, editable relation value. */
 export function freshGraphEdgeField(schema:FieldSchema,view:InterfaceView):FieldValue{
@@ -99,6 +111,25 @@ export function freshGraphEdgeField(schema:FieldSchema,view:InterfaceView):Field
   if(labelSchema&&!fieldsAtPath(item.children,path).length)item={...item,children:appendViewField(item.children,schema.children||[],path,freshViewField(labelSchema))}
  }
  return item
+}
+/** Create the relation value and its connection in one undoable world update. */
+export function createGraphConnection(world:World,storedView:InterfaceView,sourceId:string,targetId:string):World{
+ const view=graphView(world,storedView),doc=world.documents.find(d=>d.id===view.parentClassId)
+ const schema=doc&&schemaAtPath(doc.schema,view.bindings.edges?.path||[])
+ if(!doc||!schema||!doc.entities.some(e=>e.id===sourceId)||!doc.entities.some(e=>e.id===targetId))return world
+ let next=world,item=freshGraphEdgeField(schema,view)
+ if(view.kind==='graph'){
+  const path=view.bindings.edgeLabel.path,labelSchema=schemaAtPath(schema.children||[],path),relations=graphRelationClass(world,view)
+  if(labelSchema&&relations){
+   let mother=relations.entities.find(entity=>entity.name==='妈妈')
+   if(!mother){mother={id:uid(),name:'妈妈',fields:relations.schema.filter(s=>!s.repeatable).map(freshViewField)};next={...world,documents:world.documents.map(d=>d.id===relations.id?{...d,entities:[...d.entities,mother!]}:d)}}
+   item={...item,children:setRelativeValue(item.children,path,classLink(next,relations.id,mother.id),view.bindings.edgeLabel.part||'value',schema.children||[])}
+  }
+ }else item={...item,key:classLink(next,doc.id,sourceId)}
+ const target=view.bindings.target,link=classLink(next,doc.id,targetId)
+ if(target.path.length)item={...item,children:setRelativeValue(item.children,target.path,link,target.part||'value',schema.children||[])}
+ else item={...item,[target.part||'key']:link}
+ return {...next,documents:next.documents.map(d=>d.id!==doc.id?d:{...d,entities:d.entities.map(entity=>entity.id!==sourceId?entity:{...entity,fields:appendViewField(entity.fields,doc.schema,view.bindings.edges.path,item)})})}
 }
 export const isGraphKind=(kind:string|undefined)=>kind==='graph'||kind==='relationGraph'
 /** Relation inference rows use their Class key as label and Class value as target. */
@@ -154,4 +185,11 @@ export function decodeInterfaceFile(text:string,previous:InterfaceView,world:Wor
  const styles=(items:unknown)=>!!items&&typeof items==='object'&&!Array.isArray(items)&&Object.values(items).every(s=>s&&typeof s.fill==='string'&&typeof s.stroke==='string'&&Number.isFinite(s.glow))
  if(!value||value.version!==1||value.id!==previous.id||value.fileName!==previous.fileName||value.kind!==previous.kind||typeof value.name!=='string'||!world.documents.some(d=>d.id===value.parentClassId)||!value.bindings||Array.isArray(value.bindings)||!Object.values(value.bindings).every(b=>b&&['current','fixed'].includes(b.scope)&&['name','instance','member'].includes(b.source)&&['content','markdown'].includes(b.mode)&&Array.isArray(b.path)&&b.path.every(id=>typeof id==='string')&&(!b.part||['key','value'].includes(b.part)))||!value.graph||!points(value.graph.positions)||!styles(value.graph.lineStyles)||!styles(value.graph.domainStyles)||typeof value.graph.showDomains!=='boolean'||(value.graph.showFunctionRelations!==undefined&&typeof value.graph.showFunctionRelations!=='boolean')||!value.map||typeof value.map.image!=='string'||typeof value.map.legend!=='string'||!points(value.map.positions))throw new Error('界面配置无效，身份、父类型、绑定和布局必须符合规范')
  return isGraphKind(value.kind)?graphView(world,value):value
+}
+
+/** Patch only selected leaf identities; generated fields (including inherited origins) stay read-only. */
+export function patchSelectedGraphEdges(world:World,edges:ProjectedGraphEdge[],ids:string[],patch:Pick<Partial<FieldValue>,'key'|'value'>):World{
+ const selected=new Set(ids)
+ const walk=(field:FieldValue):FieldValue=>field.functionOrigin?field:selected.has(field.id)?{...field,...patch}:{...field,children:field.children.map(walk)}
+ return edges.reduce((next,edge)=>edge.readOnly?next:patchGraphEdge(next,edge,walk(edge.relationField||edge.field)),world)
 }

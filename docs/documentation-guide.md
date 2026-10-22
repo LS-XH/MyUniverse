@@ -1,52 +1,47 @@
 # 文档维护规则
 
-## 三个主模块
+现行规范按 UI、数据结构、功能维护，入口见 [总目录](README.md)。新增工作更新所属对象章节和被替代规则，不在专题末尾追加日期、“本轮修改”或“最新说明”。
 
-UI 维护设计理念、主题样式复用、页面布局、控件与手势；数据结构维护世界对象、JSON/Markdown 格式、视图绑定、聊天和工作流信封；功能维护保存刷新、Function/Tool、视图写回、Graph 执行、模型与聊天以及 API。
+## 内容归属
 
-目录见 [README](README.md)。Planning 只描述产品全貌与模块摘要；architecture 说明源码调用链；development 维护命令、验收方法和能力缺口，不承载某轮测试结果。
-
-## 主题归属
-
-| 修改对象 | 主维护位置 |
+| 内容 | 主维护位置 |
 | --- | --- |
-| 跨页面布局、复用与拖动约束 | ui/design-principles.md |
-| 主题、CSS 家族、共享配置和引用控件 | ui/styles.md |
-| 树、实例、Schema、双栏与页面操作 | ui/pages.md |
-| 工作流侧栏、端口和画布编辑 | ui/workflow-editor.md |
-| 聊天消息、工具组和提议呈现 | ui/chat.md |
-| 世界类型、稳定身份、来源与默认模板 | data/world.md |
-| 文件布局、JSON 对象与加载角色 | data/json-storage.md |
-| 标题、纯文本引用、重复成员、JSON 填入、解析 | data/markdown.md |
-| 视图/聊天/工作流持久结构 | data/views.md、chat.md、workflow.md |
-| 草稿、保存刷新、提交隔离、基线 | features/persistence.md |
-| 添加契约、调度与所有权 | features/functions.md |
-| Tool Schema、事务、执行环境 | features/tools.md |
-| 官方参数与提议确认/回退 | features/official-tools.md |
-| 关系网/地图投影与源写回 | features/interface-views.md |
-| Graph 求值、循环与根记忆事务 | features/workflow-execution.md |
-| LLM/ToolCalls/Agent/ComfyUI | features/models-and-agents.md |
-| 会话执行、SSE、重发 | features/chat.md |
-| 公共接口与调用示例 | features/api.md |
-| 需求原因、实施过程、截图和实际测试结果 | changelog/日期.md |
+| 产品范围与模块摘要 | 根 Planning.md；不放参数明细 |
+| 目录、阅读路径和职责 | docs/README.md 与三个模块 README |
+| 跨页面设计、手势、主题理念 | ui/design-principles.md |
+| 颜色、ARGB、CSS、Portal、控件与图标 | ui/styles.md；完整旧类映射仅在源码 mapping.json |
+| 导航、创作、实例/Schema、视图外观 | ui/pages.md |
+| 脚本、Skill、模型与 Agent 管理界面 | ui/libraries.md |
+| 聊天与工作流具体呈现 | ui/chat.md、ui/workflow-editor.md |
+| 字段、身份、JSON/MD、投影、图、会话 | data 中对应专题 |
+| 全局配置与迁移标志 | data/integrations.md |
+| Skill YAML、目录、manifest 和修订 | data/skills.md |
+| 操作行为、事务、取消、运行与使用示例 | features 中对应专题 |
+| 官方参数、采纳/回退 | features/official-tools.md、features/proposals.md |
+| Skill 激活、显式技能和 Runtime 文件接口 | features/skills.md |
+| 分层、调用链、逐文件导航 | architecture.md、source-map.md |
+| 环境、命令、验收方法与能力缺口 | development.md |
+| 背景、实施顺序、取舍、截图、测试数字与交付状态 | changelog/日期或主题.md |
 
-## 更新方式
+## 更新顺序
 
-先读对应专题与实际源码，把新规则放到对象所属章节，直接修改被替代规则；不要把“最新说明”“本轮修改”或日期小节追加到设计末尾。跨类型内容拆分后用链接引用，一项规则只有一个完整主维护位置。新增专题必须有独立职责，不能按聊天轮次命名。
+先核对源码及相关测试，定位字段、实际入口、提交单位和失败分支；再修改主专题，跨类型内容拆开并链接。最后更新索引、Planning 摘要与源码入口。一项规则只完整维护一次，摘要不形成第二套规范。
 
-先更新结构、行为、兼容边界与示例，再更新 Planning/README 摘要及代码入口。同日日志可按轮次追加；记录触发问题、最终修改、必要取舍、规范归属和实际验证。未执行测试应明确写出，不复用历史测试数。
+合并保留有效细节，拆分记录去向。旧路径可留导航和必要锚点，不能继续维护重复正文。资源 README 与许可证留在 assets；tests/fixtures 的业务 Markdown 不当作设计文档改写。
 
-## 状态与验证
+## 状态与证据
 
-- 已实现：有对应代码入口，并说明实际参数、范围和行为。
-- 兼容：解释旧数据如何读取，新建数据采用什么规则。
-- 待实现：明确预留入口与缺失实现。
-- 待验收：代码或模拟验证存在，真实环境尚未确认。
+- 已实现：有源码入口，写明真实参数、范围和行为。
+- 兼容：解释旧数据读取与新建对象规则。
+- 待实现：标明缺失能力，不能以存在接口代替完成。
+- 待验收：区分单测、模拟、浏览器、桌面和真实服务。
 
-用户设计要求与代码有差距时分别写要求和实现边界。构建、单测、浏览器、桌面与真实服务验收分别记录。保存前检查相对链接/锚点、类型名、示例、源码入口和各模块是否矛盾。
+设计要求与实现有差异时分别写明。磁盘单文件替换、脚本草稿、逐实例提交、Agent 根记忆和提议批量是不同事务；不能统一称为失败全部回滚。已采纳、JSON 已存档、已导出也分别表达。
 
-## 历史与交接
+日志记录触发问题、最终改动、必要原因、规范去向及实际验证命令和结果；未运行的验收明确写未运行，不复用历史测试数量、耗时或构建状态。
 
-历史原文位于 changelog/archive，manifest 记录来源、字节数和 SHA256；原文不修改。旧方案、过程顺序与测试截图留在日志，不能当作现行规范。日期/轮次无法确定时按来源归档，不补造日期。
+## 归档与检查
 
-交接先链接当前模块与能力边界，仅在追查原因时链接日志。不要再次把整段聊天抄进专题末尾。模板与映射见 [整理记录](changelog/documentation-reorganization.md)。
+重组前按原字节复制到 changelog/archive/<日期>-<主题>，manifest 记录来源路径、字节数和 SHA256。归档历史不再改写；日期不确定时按来源归档，不补造时间。旧原文内部链接按原样保留。
+
+检查现行文档相对文件链接与锚点、示例、类型名、源码入口、桥注册名、各模块保存/来源/权限表述及新对象的索引覆盖。source-map 是导航，不能代替阅读实现及测试。交接先链接现行专题，追查原因再链接日志。
