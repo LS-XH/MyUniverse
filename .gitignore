@@ -4,12 +4,16 @@ target/
 src-tauri/target/
 src-tauri/target-next/
 user/
+tests/
 *.log
+
+
 /converted
 Planning - 副本.md
 my-universe.exe - 快捷方式.lnk
 
 .cache/
+.tmp/
 /target-next/release
 *.lnk
 /docs/changelog
